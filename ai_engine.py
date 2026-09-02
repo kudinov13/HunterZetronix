@@ -7,11 +7,14 @@ Groq и OpenRouter также имеют бесплатные модели.
 import json
 import logging
 import re
+import time
+import uuid
 import httpx
 from openai import AsyncOpenAI
 from config import (OMNIROUTE_API_KEY, OMNIROUTE_BASE_URL,
                     GROQ_API_KEY, GROQ_API_KEY_2, GROQ_API_KEY_3, OPENROUTER_API_KEY, OPENAI_API_KEY, DEEPSEEK_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, NVIDIA_API_KEY,
                     BYTEPLUS_API_KEY, BYTEPLUS_ENDPOINT_ID,
+                    GIGACHAT_API_KEY, GIGACHAT_SCOPE, GIGACHAT_BASE_URL, GIGACHAT_OAUTH_URL,
                     AI_HTTP_PROXY,
                     DIALOG_AI_PROVIDER, DIALOG_MODEL,
                     CLASSIFY_AI_PROVIDER, CLASSIFY_MODEL,
@@ -43,6 +46,45 @@ ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1"
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 BYTEPLUS_BASE_URL = "https://ark.ap-southeast.bytepluses.com/api/v3"
+
+# === GigaChat OAuth token cache ===
+_gigachat_token: str | None = None
+_gigachat_token_expires: float = 0
+
+
+async def _get_gigachat_token() -> str:
+    """Получает OAuth-токен GigaChat (с кэшированием и авто-обновлением).
+    GigaChat использует OAuth2 client_credentials flow.
+    """
+    global _gigachat_token, _gigachat_token_expires
+    # Возвращаем кэшированный токен если он ещё валиден (с запасом 60 сек)
+    if _gigachat_token and time.time() < _gigachat_token_expires - 60:
+        return _gigachat_token
+    if not GIGACHAT_API_KEY:
+        raise ValueError("GIGACHAT_API_KEY не настроен. Получите на developers.sber.ru")
+    headers = {
+        "Authorization": f"Basic {GIGACHAT_API_KEY}",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "RqUID": str(uuid.uuid4()),
+    }
+    data = f"scope={GIGACHAT_SCOPE}"
+    # GigaChat OAuth использует самоподписанный сертификат — отключаем проверку
+    async with httpx.AsyncClient(verify=False, trust_env=False) as client:
+        resp = await client.post(GIGACHAT_OAUTH_URL, headers=headers, content=data, timeout=30)
+        resp.raise_for_status()
+        result = resp.json()
+        _gigachat_token = result["access_token"]
+        _gigachat_token_expires = time.time() + result.get("expires_at", time.time() + 1800)
+        logger.info("GigaChat OAuth токен получен, истекает через %d сек",
+                    int(_gigachat_token_expires - time.time()))
+        return _gigachat_token
+
+
+def _proxied_http_client_url() -> str | None:
+    """Возвращает URL прокси для httpx-клиента (GigaChat OAuth)."""
+    if AI_HTTP_PROXY:
+        return AI_HTTP_PROXY
+    return None
 
 # Модели, которые поддерживают response_format json_object
 _JSON_MODELS = {
@@ -230,6 +272,9 @@ def _get_client(provider: str) -> AsyncOpenAI:
                 base_url=BYTEPLUS_BASE_URL,
                 max_retries=0
             )
+        elif provider == "gigachat":
+            # GigaChat обрабатывается отдельно через _gigachat_chat() — не кэшируем клиент
+            raise ValueError("GigaChat использует собственный OAuth, вызывается через _gigachat_chat()")
         else:
             raise ValueError(f"Неизвестный AI провайдер: {provider}")
     return _clients[provider]
@@ -240,7 +285,49 @@ _RETRYABLE_CODES = ["429", "502", "503", "rate limit", "too many requests",
 
 # response_format json_object не поддерживается Groq для некоторых моделей —
 # убираем его при кросс-провайдерном fallback, чтобы не сломать запрос.
-_GROQ_FALLBACK_MODEL = "llama-3.3-70b-versatile"
+_GROQ_FALLBACK_MODEL = "qwen/qwen3.8-27b"
+
+
+async def _gigachat_chat(model: str, messages: list[dict], **kwargs) -> str | None:
+    """Прямой вызов GigaChat API через httpx (OAuth + самоподписанный сертификат).
+    GigaChat API совместим с OpenAI /chat/completions.
+    """
+    token = await _get_gigachat_token()
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    # GigaChat не поддерживает response_format — убираем
+    body = {
+        "model": model,
+        "messages": messages,
+        "temperature": kwargs.get("temperature", 0.7),
+        "max_tokens": kwargs.get("max_tokens", 500),
+    }
+    # GigaChat поддерживает stream=false только
+    body["stream"] = False
+    # profanity_check — уникальная фича GigaChat, отключаем (может блокировать нормальные тексты)
+    body["profanity_check"] = False
+
+    url = f"{GIGACHAT_BASE_URL}/chat/completions"
+
+    async with httpx.AsyncClient(verify=False, trust_env=False) as client:
+        resp = await client.post(url, headers=headers, json=body, timeout=60)
+        if resp.status_code == 401:
+            # Токен истёк — сбрасываем и пробуем ещё раз
+            global _gigachat_token, _gigachat_token_expires
+            _gigachat_token = None
+            _gigachat_token_expires = 0
+            token = await _get_gigachat_token()
+            headers["Authorization"] = f"Bearer {token}"
+            resp = await client.post(url, headers=headers, json=body, timeout=60)
+        resp.raise_for_status()
+        result = resp.json()
+        if result.get("choices"):
+            return result["choices"][0]["message"]["content"]
+        logger.warning(f"GigaChat вернул пустой choices: {result}")
+        return None
 
 
 async def _chat_with_fallback(
@@ -249,8 +336,28 @@ async def _chat_with_fallback(
     messages: list[dict],
     **kwargs
 ) -> str | None:
-    """Отправляет запрос к AI с fallback: сначала auto на том же провайдере,
-    затем (если настроен) кросс-провайдерный fallback на Groq."""
+    """Отправляет запрос к AI с fallback на доступный резервный провайдер."""
+    # GigaChat — отдельный путь (OAuth + самоподписанный сертификат)
+    if provider == "gigachat":
+        try:
+            return await _gigachat_chat(model, messages, **kwargs)
+        except Exception as e:
+            error_text = str(e).lower()
+            if not any(code in error_text for code in _RETRYABLE_CODES):
+                raise
+            logger.warning(f"GigaChat ошибка ({e}), пробуем fallback на OmniRoute")
+            try:
+                fallback_client = _get_client("omniroute")
+                fallback_kwargs = {k: v for k, v in kwargs.items() if k != "response_format"}
+                response = await fallback_client.chat.completions.create(
+                    model="auto/best-chat", messages=messages, **fallback_kwargs
+                )
+                if response.choices:
+                    return response.choices[0].message.content
+            except Exception as fallback_error:
+                logger.error(f"Fallback на OmniRoute тоже не сработал: {fallback_error}")
+            raise
+
     client = _get_client(provider)
     try:
         response = await client.chat.completions.create(
@@ -363,12 +470,7 @@ async def _chat_with_fallback(
 async def classify_message(message_text: str) -> dict | None:
     """Классификация сообщения: лид/не лид. Возвращает dict с category, task, budget, deadline."""
     try:
-        client = _get_client(CLASSIFY_AI_PROVIDER)
         kwargs = {
-            "messages": [
-                {"role": "system", "content": CLASSIFY_SYSTEM_PROMPT},
-                {"role": "user", "content": message_text},
-            ],
             "temperature": 0.1,
             "max_tokens": 300,
         }
@@ -376,7 +478,12 @@ async def classify_message(message_text: str) -> dict | None:
         if CLASSIFY_MODEL in _JSON_MODELS or CLASSIFY_AI_PROVIDER == "openai":
             kwargs["response_format"] = {"type": "json_object"}
         content = await _chat_with_fallback(
-            CLASSIFY_AI_PROVIDER, CLASSIFY_MODEL, kwargs.pop("messages"), **kwargs
+            CLASSIFY_AI_PROVIDER, CLASSIFY_MODEL,
+            [
+                {"role": "system", "content": CLASSIFY_SYSTEM_PROMPT},
+                {"role": "user", "content": message_text},
+            ],
+            **kwargs
         )
         # Если модель не поддерживает json_object, пытаемся извлечь JSON из текста
         result = _extract_json(content)
@@ -400,8 +507,6 @@ async def generate_dialogue_response(
     Возвращает (текст_ответа, новая_стадия) или None при ошибке.
     """
     try:
-        client = _get_client(DIALOG_AI_PROVIDER)
-
         gender_ru = await _get_gender_ru()
         system_content = f"{DIALOG_SYSTEM_PROMPT.format(gender=gender_ru)}\n\n{DEVELOPER_INFO}\n\n"
         system_content += f"Текущая стадия диалога: {stage}\n"
@@ -451,10 +556,32 @@ async def generate_dialogue_response(
 # === A/B Testing: генерация вариантов первого сообщения ===
 
 _AB_VARIANT_STYLES = [
-    "Прямой подход: сразу к делу, покажите экспертизу и предложите обсудить проект.",
-    "Дружелюбный подход: начните с эмпатии к проблеме клиента, мягко предложите помощь.",
-    "Вопросный подход: задайте уточняющий вопрос по его запросу, чтобы завязать диалог.",
+    "Прямой подход: коротко назовите конкретную проблему и задайте один вопрос о ней.",
+    "Дружелюбный подход: по-человечески отреагируйте на боль и задайте один простой вопрос.",
+    "Вопросный подход: сразу задайте точный вопрос по ситуации без продажи своих услуг.",
 ]
+
+_FIRST_MESSAGE_META_RE = re.compile(
+    r"(?i)(we need|let(?:'|’)s|нужно написать|надо написать|вариант\s*[а-вa-c]|"
+    r"ответ\s*:|сообщение\s*:|system prompt|assistant|user prompt)"
+)
+
+
+def _validate_first_message(text: str) -> tuple[bool, str]:
+    value = (text or "").strip().strip('"“”')
+    if len(value) < 35:
+        return False, "слишком короткое или оборванное сообщение"
+    if len(value) > 350:
+        return False, "сообщение длиннее 350 символов"
+    if _FIRST_MESSAGE_META_RE.search(value):
+        return False, "модель вернула рассуждения или служебный текст"
+    if value.count("(") != value.count(")"):
+        return False, "незакрытые скобки"
+    if not value.endswith("?"):
+        return False, "первое сообщение должно завершаться вопросом"
+    if len(re.findall(r"[.!?](?:\s|$)", value)) > 3:
+        return False, "больше трёх предложений"
+    return True, ""
 
 
 async def generate_first_message_variants(
@@ -468,7 +595,12 @@ async def generate_first_message_variants(
     """
     gender_ru = await _get_gender_ru()
     system_content = f"{DIALOG_SYSTEM_PROMPT.format(gender=gender_ru)}\n\n{DEVELOPER_INFO}\n\n"
-    system_content += "Текущая стадия диалога: INITIATING\n"
+    system_content += (
+        "Текущая стадия диалога: INITIATING. Верни только готовый текст сообщения без "
+        "пояснений и вариантов. 1-3 коротких предложения, до 350 символов. "
+        "Заверши одним естественным вопросом. Не начинай с продажи и не заявляй об опыте, "
+        "которого нет в контексте.\n"
+    )
 
     variants = []
     for i in range(num_variants):
@@ -478,15 +610,27 @@ async def generate_first_message_variants(
             {"role": "system", "content": system_content},
             {"role": "user", "content": user_msg},
         ]
-        try:
-            content = await _chat_with_fallback(
-                DIALOG_AI_PROVIDER, DIALOG_MODEL, messages,
-                temperature=0.8 + i * 0.1, max_tokens=300,
-            )
-            if content and content.strip():
-                variants.append(content.strip())
-        except Exception as e:
-            logger.error(f"Ошибка генерации варианта #{i}: {e}")
+        for attempt in range(2):
+            try:
+                content = await _chat_with_fallback(
+                    DIALOG_AI_PROVIDER, DIALOG_MODEL, messages,
+                    temperature=0.7 + i * 0.1, max_tokens=220,
+                )
+                value = (content or "").strip().strip('"“”')
+                valid, reason = _validate_first_message(value)
+                if valid:
+                    variants.append(value)
+                    break
+                logger.warning(f"Вариант #{i} отклонён: {reason}: {value[:120]}")
+                messages.extend([
+                    {"role": "assistant", "content": value},
+                    {"role": "user", "content": (
+                        f"Текст отклонён: {reason}. Перепиши полностью. Верни только законченное "
+                        "сообщение до 350 символов, которое заканчивается одним вопросом."
+                    )},
+                ])
+            except Exception as e:
+                logger.error(f"Ошибка генерации варианта #{i}, попытка #{attempt + 1}: {e}")
 
     if not variants:
         logger.error("Не удалось сгенерировать ни одного варианта первого сообщения")
@@ -506,6 +650,38 @@ def _has_foreign_script(text: str) -> bool:
     return bool(_FOREIGN_SCRIPT_RE.search(text or ""))
 
 
+_BROADCAST_PROHIBITED_RE = re.compile(
+    r"(?i)(реклам\w*\s+(?:запрещ|нельзя)|запрещ\w*\s+(?:реклам|самореклам|услуг)|"
+    r"самореклам\w*\s+(?:запрещ|нельзя)|без\s+реклам|коммерческ\w*\s+(?:пост|сообщ).*запрещ)"
+)
+
+
+def _broadcast_similarity(text: str, recent_messages: list[str]) -> float:
+    words = set(re.findall(r"[а-яёa-z0-9]+", (text or "").casefold()))
+    if not words:
+        return 1.0
+    maximum = 0.0
+    for previous in recent_messages:
+        previous_words = set(re.findall(r"[а-яёa-z0-9]+", (previous or "").casefold()))
+        if not previous_words:
+            continue
+        union = words | previous_words
+        maximum = max(maximum, len(words & previous_words) / len(union))
+    return maximum
+
+
+def _broadcast_message_from_result(result: dict) -> str:
+    selected = str(result.get("selected", "a")).lower()
+    message = str(result.get(f"variant_{selected}", "") or "").strip()
+    if message:
+        return message
+    for key in ("variant_a", "variant_b", "variant_c"):
+        message = str(result.get(key, "") or "").strip()
+        if message:
+            return message
+    return ""
+
+
 async def generate_broadcast(chat_rules: str, recent_messages: list[str],
                              now_str: str, is_direct_promo: bool = False) -> dict | None:
     """Генерация рекламной рассылки с учётом правил чата.
@@ -515,6 +691,18 @@ async def generate_broadcast(chat_rules: str, recent_messages: list[str],
     """
     try:
         recent_text = "\n---\n".join(recent_messages) if recent_messages else "(ещё не было отправок)"
+        rules_value = (chat_rules or "").strip()
+        if is_direct_promo and rules_value and rules_value != NO_RULES_MARKER:
+            is_direct_promo = False
+
+        if not is_direct_promo and rules_value != NO_RULES_MARKER and _BROADCAST_PROHIBITED_RE.search(rules_value):
+            return {
+                "skip": True,
+                "reason": "В правилах найден запрет рекламы или саморекламы",
+                "message": "",
+                "chat_niche": "",
+                "entry_point": "",
+            }
 
         if is_direct_promo:
             prompt = DIRECT_PROMPT.format(
@@ -534,6 +722,12 @@ async def generate_broadcast(chat_rules: str, recent_messages: list[str],
                 chat_rules=rules_text,
                 recent_messages=recent_text,
                 current_datetime=now_str,
+            )
+            prompt += (
+                "\n\nСТРОГИЙ ПРИОРИТЕТ БЕЗОПАСНОСТИ: правила чата нельзя обходить или искать в них "
+                "лазейки. Если реклама, самореклама, услуги или коммерческие публикации запрещены "
+                "либо разрешение неоднозначно — верни skip=true. Не маскируй рекламу под совет, "
+                "историю или вопрос."
             )
 
         messages = [{"role": "user", "content": prompt}]
@@ -568,23 +762,44 @@ async def generate_broadcast(chat_rules: str, recent_messages: list[str],
             logger.error(f"Неверный формат ответа рассылки (skip не bool): skip={skip!r}, content[:200]={content[:200]}")
             return None
         
-        # Получаем выбранный вариант
-        selected = result.get("selected", "a").lower()
-        variant_key = f"variant_{selected}"
-        message = result.get(variant_key, "").strip()
-        
-        # Если выбранного варианта нет, пробуем другие
-        if not message:
-            for key in ["variant_a", "variant_b", "variant_c"]:
-                if result.get(key, "").strip():
-                    message = result.get(key, "").strip()
-                    break
-        
+        selected = str(result.get("selected", "a")).lower()
+        message = _broadcast_message_from_result(result)
+
         if not skip and not message:
-            logger.error(f"Рассылка без текста при skip=false: selected={selected!r}, variant_key={variant_key!r}, result_keys={list(result.keys())}, content[:300]={content[:300]}")
+            logger.error(f"Рассылка без текста при skip=false: selected={selected!r}, result_keys={list(result.keys())}, content[:300]={content[:300]}")
             return None
 
-        # Защита от бага слабых моделей: посторонние алфавиты (иероглифы и т.п.)
+        if not skip and recent_messages and _broadcast_similarity(message, recent_messages) >= 0.52:
+            logger.warning("Рассылка слишком похожа на предыдущие, повторная генерация")
+            retry_messages = messages + [
+                {"role": "assistant", "content": content},
+                {"role": "user", "content": (
+                    "Выбранный текст программно признан слишком похожим на прошлые публикации. "
+                    "Выбери другую тему, другой заход и другую структуру. Не переставляй слова в "
+                    "старом тексте. Верни новый JSON в исходном формате либо skip=true."
+                )},
+            ]
+            retry_content = await _chat_with_fallback(
+                BROADCAST_AI_PROVIDER, BROADCAST_MODEL,
+                retry_messages, temperature=0.95, max_tokens=1200,
+            )
+            retry_result = _extract_json(retry_content)
+            retry_skip = retry_result.get("skip")
+            if not isinstance(retry_skip, bool):
+                return None
+            result = retry_result
+            skip = retry_skip
+            selected = str(result.get("selected", "a")).lower()
+            message = _broadcast_message_from_result(result)
+            if not skip and (not message or _broadcast_similarity(message, recent_messages) >= 0.52):
+                return {
+                    "skip": True,
+                    "reason": "Не удалось создать достаточно непохожую публикацию",
+                    "message": "",
+                    "chat_niche": result.get("chat_niche", ""),
+                    "entry_point": result.get("entry_point", ""),
+                }
+
         if not skip and _has_foreign_script(message):
             logger.error(f"Рассылка отклонена: обнаружены посторонние символы в тексте: {message[:200]}")
             return None
@@ -603,7 +818,6 @@ async def generate_broadcast(chat_rules: str, recent_messages: list[str],
 async def generate_message_variants(base_text: str, count: int = 3) -> list[str]:
     """Генерация вариантов сообщения для рассылки (анти-бан рандомизация)."""
     try:
-        client = _get_client(CLASSIFY_AI_PROVIDER)
         prompt = (
             f"Создай {count} варианта следующего сообщения для Telegram-чата. "
             f"Смысл одинаковый, но формулировки разные. "
@@ -612,15 +826,15 @@ async def generate_message_variants(base_text: str, count: int = 3) -> list[str]
             f"Ответай в JSON: {{\"variants\": [\"вариант1\", \"вариант2\", ...]}}"
         )
         kwargs = {
-            "model": CLASSIFY_MODEL,
-            "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.8,
             "max_tokens": 500,
         }
         if CLASSIFY_MODEL in _JSON_MODELS or CLASSIFY_AI_PROVIDER == "openai":
             kwargs["response_format"] = {"type": "json_object"}
         content = await _chat_with_fallback(
-            CLASSIFY_AI_PROVIDER, CLASSIFY_MODEL, kwargs.pop("messages"), **kwargs
+            CLASSIFY_AI_PROVIDER, CLASSIFY_MODEL,
+            [{"role": "user", "content": prompt}],
+            **kwargs
         )
         result = _extract_json(content)
         variants = result.get("variants", [base_text])

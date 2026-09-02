@@ -14,6 +14,14 @@ _keyword_patterns = [re.compile(kw, re.IGNORECASE) for kw in LEAD_KEYWORDS]
 _exclude_patterns = [re.compile(kw, re.IGNORECASE) for kw in LEAD_EXCLUDE_KEYWORDS]
 _cold_keyword_patterns = [re.compile(kw, re.IGNORECASE) for kw in COLD_LEAD_KEYWORDS]
 _cold_exclude_patterns = [re.compile(kw, re.IGNORECASE) for kw in COLD_LEAD_EXCLUDE_KEYWORDS]
+_cold_frustration_pattern = re.compile(
+    r"(?i)(устал|надоел|достал|замуч|возиться|руки\s+опускаются|нет\s+сил|сколько\s+можно)"
+)
+_cold_process_pattern = re.compile(
+    r"(?i)(документ|бумаг|первичк|накладн|договор|акт\b|сч[её]т|отч[её]т|"
+    r"вручн|заполня|проверя|перепроверя|вбива|перенос|таблиц|excel|эксел|"
+    r"заявк|заказ|уч[её]т|рутин|каждый\s+день\s+одно\s+и\s+то\s+же|постоянно)"
+)
 
 # Минимальная длина сообщения для анализа
 MIN_MESSAGE_LENGTH = 15
@@ -68,7 +76,7 @@ def _matches_cold_keywords(text: str) -> bool:
     for pattern in _cold_keyword_patterns:
         if pattern.search(text):
             return True
-    return False
+    return bool(_cold_frustration_pattern.search(text) and _cold_process_pattern.search(text))
 
 
 def _level0_filter(text: str, message_date: datetime, sender_is_bot: bool) -> bool:

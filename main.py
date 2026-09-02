@@ -168,10 +168,23 @@ async def main():
         chats = await db.get_monitored_chats()
         return web.json_response({
             "running": user_client.is_running,
+            "paused": user_client.is_paused,
             "monitored_chats": len(chats),
             "hourly_actions": hourly,
             "daily_actions": daily,
         })
+
+    async def api_pause(request):
+        """API: поставить парсинг на паузу (остановить обработку сообщений и рассылки)."""
+        await user_client.pause()
+        logger.info("Парсинг остановлен через API (GUI)")
+        return web.json_response({"success": True, "paused": True})
+
+    async def api_resume(request):
+        """API: возобновить парсинг (запустить обработку сообщений и рассылки)."""
+        await user_client.resume()
+        logger.info("Парсинг запущен через API (GUI)")
+        return web.json_response({"success": True, "paused": False})
 
     app.router.add_get('/api/chats', get_chats)
     app.router.add_post('/api/chats', api_update_chat)
@@ -180,6 +193,8 @@ async def main():
     app.router.add_get('/api/settings', api_get_settings)
     app.router.add_post('/api/settings', api_set_settings)
     app.router.add_get('/api/status', api_status)
+    app.router.add_post('/api/pause', api_pause)
+    app.router.add_post('/api/resume', api_resume)
     
     runner = web.AppRunner(app)
     await runner.setup()

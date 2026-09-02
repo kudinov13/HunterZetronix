@@ -3,7 +3,11 @@
 Собирается тонкий клиент: только tkinter + python-dotenv.
 Telethon/aiogram/AI не нужны — вся работа идёт на сервере.
 """
+import sys
+
 import PyInstaller.__main__
+
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 PyInstaller.__main__.run([
     '--onefile',

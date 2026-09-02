@@ -103,6 +103,12 @@ class ServerAPI:
     def get_status(self) -> dict:
         return self._request("GET", "/api/status", timeout=30)
 
+    def pause_parsing(self) -> dict:
+        return self._request("POST", "/api/pause", {})
+
+    def resume_parsing(self) -> dict:
+        return self._request("POST", "/api/resume", {})
+
 
 class App:
     def __init__(self, root: tk.Tk, api: ServerAPI):
@@ -224,6 +230,23 @@ class App:
                                      command=self.reload_chat_list)
         self.reload_btn.pack(anchor=tk.W, pady=(6, 0))
 
+        # Управление парсингом (обработкой сообщений и рассылками)
+        parse_frame = ttk.LabelFrame(right, text="Парсинг", padding=(8, 6))
+        parse_frame.pack(fill=tk.X, pady=(16, 0))
+
+        self.parse_state_var = tk.StringVar(value="⏳ состояние неизвестно")
+        ttk.Label(parse_frame, textvariable=self.parse_state_var,
+                  font=("", 9, "bold")).pack(anchor=tk.W, pady=(0, 6))
+
+        parse_btns = ttk.Frame(parse_frame)
+        parse_btns.pack(fill=tk.X)
+        self.pause_btn = ttk.Button(parse_btns, text="⏸ Остановить парсинг",
+                                    command=self.pause_parsing)
+        self.pause_btn.pack(side=tk.LEFT, expand=True, fill=tk.X)
+        self.resume_btn = ttk.Button(parse_btns, text="▶️ Запустить парсинг",
+                                     command=self.resume_parsing)
+        self.resume_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(6, 0))
+
         # Статус-бар
         self.status_var = tk.StringVar(value=f"Подключение к серверу {SERVER_URL}...")
         status = ttk.Label(self.root, textvariable=self.status_var,
@@ -234,7 +257,8 @@ class App:
 
     def _set_controls_enabled(self, enabled: bool):
         state = "normal" if enabled else "disabled"
-        for btn in (self.save_btn, self.test_btn, self.sync_btn, self.reload_btn):
+        for btn in (self.save_btn, self.test_btn, self.sync_btn, self.reload_btn,
+                    self.pause_btn, self.resume_btn):
             btn.configure(state=state)
 
     def _toggle_no_rules(self):
@@ -349,6 +373,7 @@ class App:
             self.gender_var.set(settings.get("developer_gender", "male"))
             self._apply_chats(chats)
             self._set_controls_enabled(True)
+            self._apply_parse_state(status)
             running = "✅ работает" if status.get("running") else "⚠️ Telegram-клиент остановлен"
             logger.info(f"Подключено к серверу, чатов в списке: {len(chats)}")
             self.status_var.set(
@@ -382,11 +407,17 @@ class App:
 
     def reload_chat_list(self):
         self.status_var.set("⟳ Загрузка данных с сервера...")
-        def done(chats):
+        def load():
+            status = self.api.get_status()
+            chats = self.api.get_chats()
+            return status, chats
+        def done(result):
+            status, chats = result
             self._apply_chats(chats)
             self._set_controls_enabled(True)
+            self._apply_parse_state(status)
             self.status_var.set(f"✅ Данные загружены с сервера ({len(chats)} чатов)")
-        self.run_bg(self.api.get_chats, on_done=done)
+        self.run_bg(load, on_done=done)
 
     def _on_select(self, _event):
         sel = self.tree.selection()
@@ -413,6 +444,51 @@ class App:
         self.times_var.set(chat.get("broadcast_times") or "")
 
     # === Кнопки ===
+
+    def _apply_parse_state(self, status: dict):
+        """Обновляет индикатор состояния парсинга по ответу /api/status."""
+        if not status.get("running"):
+            self.parse_state_var.set("⚠️ Telegram-клиент остановлен")
+            self.pause_btn.configure(state="disabled")
+            self.resume_btn.configure(state="disabled")
+            return
+        if status.get("paused"):
+            self.parse_state_var.set("⏸ Парсинг остановлен")
+        else:
+            self.parse_state_var.set("▶️ Парсинг идёт")
+        # Кнопки уже включены через _set_controls_enabled
+        self.pause_btn.configure(state="normal")
+        self.resume_btn.configure(state="normal")
+
+    def pause_parsing(self):
+        self.status_var.set("⏸ Останавливаю парсинг на сервере...")
+        self.pause_btn.configure(state="disabled")
+
+        def done(result):
+            self._apply_parse_state(result)
+            self.status_var.set("⏸ Парсинг остановлен — обработка сообщений и рассылки приостановлены")
+
+        def err(e):
+            self.pause_btn.configure(state="normal")
+            self.status_var.set("❌ Не удалось остановить парсинг")
+            messagebox.showerror("Ошибка", str(e))
+
+        self.run_bg(self.api.pause_parsing, on_done=done, on_error=err)
+
+    def resume_parsing(self):
+        self.status_var.set("▶️ Запускаю парсинг на сервере...")
+        self.resume_btn.configure(state="disabled")
+
+        def done(result):
+            self._apply_parse_state(result)
+            self.status_var.set("▶️ Парсинг запущен — обработка сообщений и рассылки возобновлены")
+
+        def err(e):
+            self.resume_btn.configure(state="normal")
+            self.status_var.set("❌ Не удалось запустить парсинг")
+            messagebox.showerror("Ошибка", str(e))
+
+        self.run_bg(self.api.resume_parsing, on_done=done, on_error=err)
 
     def save_gender(self):
         gender = self.gender_var.get()

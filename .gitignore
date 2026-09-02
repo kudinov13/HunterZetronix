@@ -19,3 +19,6 @@ _deploy_*.py
 LeadHunter.exe
 *.exe
 .DS_Store
+gui.log
+desktop.ini
+_tmp/

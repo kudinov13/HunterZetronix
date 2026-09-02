@@ -31,6 +31,8 @@ class NotificationBot:
             logger.info("Bot API: прямое подключение (без прокси)")
         self.dp = Dispatcher()
         self.user_client = user_client
+        self._awaiting_price_input = False
+        self._price_dialog_ref: str | None = None
         self._register_handlers()
 
     def _main_keyboard(self) -> ReplyKeyboardMarkup:
@@ -41,6 +43,8 @@ class NotificationBot:
                 [KeyboardButton(text="💬 Диалоги"), KeyboardButton(text="🔍 Поиск чатов")],
                 [KeyboardButton(text="📋 Найденные чаты"), KeyboardButton(text="❄️ Холодный обход")],
                 [KeyboardButton(text="📈 Статистика"), KeyboardButton(text="⚙️ Настройки")],
+                [KeyboardButton(text="💰 Указать цену")],
+                [KeyboardButton(text="⏸ Остановить парсинг"), KeyboardButton(text="▶️ Запустить парсинг")],
             ],
             resize_keyboard=True,
         )
@@ -138,6 +142,43 @@ class NotificationBot:
             if message.from_user.id != OWNER_TG_ID:
                 return
             await message.answer("⚙️ Меню настроек:", reply_markup=self._settings_keyboard())
+
+        @self.dp.message(F.text == "💰 Указать цену")
+        async def btn_price(message: Message):
+            if message.from_user.id != OWNER_TG_ID:
+                return
+            self._awaiting_price_input = True
+            self._price_dialog_ref = None
+            await message.answer(
+                "Введите ID диалога или @ник и цену через пробел.\n"
+                "Примеры:\n12 45000\n@username 45000"
+            )
+
+        @self.dp.message(F.text == "⏸ Остановить парсинг")
+        async def btn_pause_bot(message: Message):
+            if message.from_user.id != OWNER_TG_ID:
+                return
+            if self.user_client:
+                if self.user_client.is_paused:
+                    await message.answer("⏸ Парсинг уже остановлен.")
+                else:
+                    await self.user_client.pause()
+                    await message.answer("⏸ Парсинг остановлен.\nОбработка новых сообщений и рассылки приостановлены.\nНажмите «▶️ Запустить парсинг» чтобы возобновить.")
+            else:
+                await message.answer("❌ Клиент не инициализирован")
+
+        @self.dp.message(F.text == "▶️ Запустить парсинг")
+        async def btn_resume_bot(message: Message):
+            if message.from_user.id != OWNER_TG_ID:
+                return
+            if self.user_client:
+                if not self.user_client.is_paused:
+                    await message.answer("▶️ Парсинг уже идёт.")
+                else:
+                    await self.user_client.resume()
+                    await message.answer("▶️ Парсинг запущен!\nОбработка сообщений и рассылки возобновлены.")
+            else:
+                await message.answer("❌ Клиент не инициализирован")
 
         @self.dp.message(F.text == "⬅️ Назад")
         async def btn_back(message: Message):
@@ -259,7 +300,9 @@ class NotificationBot:
                 "/stats — статистика лидов\n"
                 "/active — активные диалоги (с кнопками закрытия)\n"
                 "/ab_stats — статистика A/B тестирования первых сообщений\n"
-                "/search_chats — авто-поиск бизнес-чатов по ключевым словам\n\n"
+                "/search_chats — авто-поиск бизнес-чатов по ключевым словам\n"
+                "/pause — остановить парсинг (обработку сообщений и рассылки)\n"
+                "/resume — запустить парсинг после паузы\n\n"
                 "Когда приходит лид — нажмите «Написать клиенту» чтобы AI начал диалог.\n"
                 "Когда клиент опишет задачу — укажите цену сообщением.\n"
                 "Формат: /price <dialog_id> <цена>"
@@ -270,6 +313,32 @@ class NotificationBot:
             if message.from_user.id != OWNER_TG_ID:
                 return
             await self._handle_status(message)
+
+        @self.dp.message(Command("pause"))
+        async def cmd_pause(message: Message):
+            if message.from_user.id != OWNER_TG_ID:
+                return
+            if self.user_client:
+                if self.user_client.is_paused:
+                    await message.answer("⏸ Бот уже на паузе.")
+                else:
+                    await self.user_client.pause()
+                    await message.answer("⏸ Парсинг остановлен. /resume для запуска.")
+            else:
+                await message.answer("❌ Клиент не инициализирован")
+
+        @self.dp.message(Command("resume"))
+        async def cmd_resume(message: Message):
+            if message.from_user.id != OWNER_TG_ID:
+                return
+            if self.user_client:
+                if not self.user_client.is_paused:
+                    await message.answer("▶️ Парсинг уже идёт.")
+                else:
+                    await self.user_client.resume()
+                    await message.answer("▶️ Парсинг запущен!")
+            else:
+                await message.answer("❌ Клиент не инициализирован")
 
         @self.dp.message(Command("chats"))
         async def cmd_chats(message: Message):
@@ -436,18 +505,22 @@ class NotificationBot:
                 return
             args = message.text.split(maxsplit=2)
             if len(args) < 3:
-                await message.answer("Использование: /price <dialog_id> <цена>\nПример: /price 5 350000")
+                await message.answer(
+                    "Использование: /price <ID или @ник> <цена>\n"
+                    "Примеры:\n/price 12 45000\n/price @username 45000"
+                )
                 return
-            try:
-                dialog_id = int(args[1])
-                price = args[2]
-            except ValueError:
-                await message.answer("Неверный формат. Пример: /price 5 350000")
+            dialog_ref = args[1]
+            price = args[2].strip()
+            if not price:
+                await message.answer("Цена не указана.")
                 return
-
             if self.user_client:
-                await self.user_client.continue_dialog_with_price(dialog_id, price)
-                await message.answer(f"✅ Цена {price} отправлена в диалог #{dialog_id}. AI продолжает переговоры.")
+                success = await self.user_client.continue_dialog_with_price(dialog_ref, price)
+                if success:
+                    await message.answer(f"✅ Цена {price} отправлена в диалог {dialog_ref}.")
+                else:
+                    await message.answer("❌ Диалог не найден, завершён или сообщение не отправлено.")
             else:
                 await message.answer("❌ Клиент не инициализирован")
 
@@ -486,10 +559,23 @@ class NotificationBot:
             if callback.from_user.id != OWNER_TG_ID:
                 return
             dialog_id = int(callback.data.split("_")[1])
-            await callback.answer("Укажите цену командой /price")
-            await callback.message.edit_text(
-                callback.message.text
-                + f"\n\n💰 Укажите цену командой:\n/price {dialog_id} <сумма>"
+            self._awaiting_price_input = True
+            self._price_dialog_ref = str(dialog_id)
+            await callback.answer("Введите цену следующим сообщением")
+            await callback.message.answer(
+                f"Введите цену для диалога #{dialog_id} обычным сообщением.\nПример: 45000"
+            )
+
+        @self.dp.callback_query(F.data.startswith("price_input_"))
+        async def cb_price_input(callback: CallbackQuery):
+            if callback.from_user.id != OWNER_TG_ID:
+                return
+            dialog_id = callback.data.split("_")[-1]
+            self._awaiting_price_input = True
+            self._price_dialog_ref = dialog_id
+            await callback.answer("Введите цену следующим сообщением")
+            await callback.message.answer(
+                f"Введите цену для диалога #{dialog_id} обычным сообщением.\nПример: 45000"
             )
 
         @self.dp.callback_query(F.data.startswith("cold_write_"))
@@ -632,6 +718,31 @@ class NotificationBot:
                 logger.error(f"Ошибка approve_gis: {e}")
                 await message.answer(f"❌ Ошибка: {e}")
 
+        @self.dp.message(F.text)
+        async def price_text_input(message: Message):
+            if message.from_user.id != OWNER_TG_ID or not self._awaiting_price_input:
+                return
+            text = (message.text or "").strip()
+            if self._price_dialog_ref:
+                dialog_ref = self._price_dialog_ref
+                price = text
+            else:
+                parts = text.split(maxsplit=1)
+                if len(parts) < 2:
+                    await message.answer("Нужно указать ID или @ник и цену через пробел.")
+                    return
+                dialog_ref, price = parts
+            if not self.user_client:
+                await message.answer("❌ Клиент не инициализирован")
+                return
+            success = await self.user_client.continue_dialog_with_price(dialog_ref, price)
+            if success:
+                self._awaiting_price_input = False
+                self._price_dialog_ref = None
+                await message.answer(f"✅ Цена {price} отправлена в диалог {dialog_ref}.")
+            else:
+                await message.answer("❌ Не удалось назначить цену. Проверьте ID или @ник.")
+
     async def _handle_status(self, message: Message):
         hourly = await db.get_hourly_actions_count()
         daily = await db.get_daily_actions_count()
@@ -643,6 +754,7 @@ class NotificationBot:
         status_text = (
             f"📊 Статус системы\n\n"
             f"• Клиент: {'✅ Запущен' if running else '❌ Остановлен'}\n"
+            f"• Режим: {'⏸ Парсинг остановлен' if (self.user_client and self.user_client.is_paused) else '▶️ Парсинг идёт'}\n"
             f"• Прогрев: {'⏳ Активен' if warmup else '✅ Завершён'}\n"
             f"• Чатов отслеживается: {len(chats)}\n"
             f"• Действий за час: {hourly}\n"
@@ -667,6 +779,9 @@ class NotificationBot:
             followups = d.get("followup_count", 0)
             sender = d.get("sender_name", "?")
             username = d.get("sender_username")
+            country = d.get("country")
+            company = d.get("company")
+            interest = d.get("interest_level")
             updated = d.get("updated_at", "?")
 
             text += (
@@ -677,6 +792,12 @@ class NotificationBot:
                 + (f" (@{username})" if username else "")
                 + "\n"
             )
+            if country:
+                text += f"  🌍 {country}\n"
+            if company:
+                text += f"  🏢 {company}\n"
+            if interest:
+                text += f"  🌡 {interest}\n"
             if task:
                 text += f"  🎯 {task}\n"
             if price:
@@ -1120,8 +1241,57 @@ class NotificationBot:
                           category: str, task: str = None, budget: str = None,
                           deadline: str = None, market_price: str = None,
                           market_deadline: str = None, lead_score: int = 0,
-                          sender_id: int = None, dialog_id: int = None):
+                          sender_id: int = None, dialog_id: int = None,
+                          recommendation: str = None, service_description: str = None,
+                          country: str = None, brief: str = None, reason: str = None):
         """Отправка уведомления о лиде владельцу."""
+
+        if category == "PRICE_REQUIRED":
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="💰 Ввести цену", callback_data=f"price_input_{dialog_id}"),
+                InlineKeyboardButton(text="👤 Взять на себя", callback_data=f"takeover_{dialog_id}"),
+            ]])
+            text = (
+                f"💰 Нужна ваша цена\n\n"
+                f"Диалог: #{dialog_id}\n"
+                f"Клиент: {sender_name}"
+                + (f" (@{sender_username})" if sender_username else "") + "\n"
+                + (f"Страна: {country}\n" if country else "")
+                + f"Услуга вне прайса: {service_description or 'не определена'}\n\n"
+                f"Рекомендация GigaChat:\n{recommendation or 'нет рекомендации'}\n\n"
+                f"Собранные данные:\n{message_text[:1800]}\n\n"
+                f"Нажмите «Ввести цену» или используйте:\n"
+                f"/price {dialog_id} <цена>"
+            )
+            await self.bot.send_message(OWNER_TG_ID, text, reply_markup=keyboard)
+            return
+
+        if category == "DEAL_READY":
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="👤 Беру диалог", callback_data=f"takeover_{dialog_id}"),
+            ]])
+            text = (
+                f"🔥 Клиент готов к работе\n\n"
+                f"Диалог: #{dialog_id}\n"
+                f"Клиент: {sender_name}"
+                + (f" (@{sender_username})" if sender_username else "") + "\n"
+                + (f"Страна: {country}\n\n" if country else "\n")
+                + f"ТЗ и данные:\n{(brief or message_text)[:3000]}\n\n"
+                "AI остановлен. Продолжайте общение с клиентом вручную."
+            )
+            await self.bot.send_message(OWNER_TG_ID, text, reply_markup=keyboard)
+            return
+
+        if category == "HUMAN_REQUIRED":
+            text = (
+                f"⚠️ Нужна ручная проверка диалога #{dialog_id}\n"
+                f"Клиент: {sender_name}"
+                + (f" (@{sender_username})" if sender_username else "") + "\n"
+                + f"Причина: {reason or 'AI не уверен'}\n\n"
+                f"Сообщение:\n{message_text[:1000]}"
+            )
+            await self.bot.send_message(OWNER_TG_ID, text)
+            return
 
         if category == "TASK_READY":
             # Клиент описал задачу — нужен ввод цены
@@ -1195,5 +1365,9 @@ class NotificationBot:
         await self.dp.start_polling(self.bot)
 
     async def stop(self):
-        await self.dp.stop_polling()
+        try:
+            await self.dp.stop_polling()
+        except RuntimeError as e:
+            if "Polling is not started" not in str(e):
+                raise
         await self.bot.session.close()

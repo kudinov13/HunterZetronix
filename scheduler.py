@@ -128,6 +128,11 @@ class MessageScheduler:
             logger.error("User client не инициализирован для scheduler")
             return
 
+        # Проверка паузы
+        if self.user_client.is_paused:
+            logger.info(f"Бот на паузе — рассылка для чата {chat_id} пропущена")
+            return
+
         # Получаем настройки чата
         async with db.aiosqlite.connect(db.DB_PATH) as conn:
             conn.row_factory = db.aiosqlite.Row
@@ -197,6 +202,11 @@ class MessageScheduler:
             logger.error("User client не инициализирован для AI-рассылки")
             return
 
+        # Проверка паузы
+        if self.user_client.is_paused:
+            logger.info(f"Бот на паузе — AI-рассылка для чата {chat_id} пропущена")
+            return
+
         # Перечитываем чат: правила/флаги могли измениться после создания джоба
         chat = await db.get_chat(chat_id)
         if not chat or not chat.get("is_broadcast"):
@@ -248,6 +258,11 @@ class MessageScheduler:
     async def _check_followups(self):
         """Проверяет stale-диалоги и отправляет follow-up сообщения."""
         if not self.user_client:
+            return
+
+        # Проверка паузы
+        if self.user_client.is_paused:
+            logger.info("Бот на паузе — follow-up проверка пропущена")
             return
 
         stale = await db.get_stale_dialogs(FOLLOWUP_HOURS_THRESHOLD, FOLLOWUP_MAX)

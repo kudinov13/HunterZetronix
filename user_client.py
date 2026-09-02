@@ -7,6 +7,8 @@ from telethon import TelegramClient, events, connection
 from telethon.tl.custom import Message
 from config import (TG_API_ID, TG_API_HASH, TG_PHONE, TG_SESSION_NAME,
                     TG_MTPROTO_HOST, TG_MTPROTO_PORT, TG_MTPROTO_SECRET,
+                    TG_PROXY_TYPE, TG_PROXY_HOST, TG_PROXY_PORT,
+                    TG_PROXY_USERNAME, TG_PROXY_PASSWORD,
                     COLD_LEAD_ENABLED, FOLLOWUP_MAX)
 import database as db
 from anti_ban import AntiBan
@@ -16,12 +18,29 @@ logger = logging.getLogger(__name__)
 
 
 def _build_telegram_client() -> TelegramClient:
-    """Создаёт TelegramClient, при необходимости через MTProto-прокси."""
+    """Создаёт TelegramClient, при необходимости через прокси."""
     kwargs = {
         "connection_retries": 5,
         "retry_delay": 2,
     }
-    if TG_MTPROTO_HOST and TG_MTPROTO_PORT and TG_MTPROTO_SECRET:
+    # Приоритет 1: SOCKS5/HTTP прокси (TG_PROXY_TYPE)
+    if TG_PROXY_TYPE and TG_PROXY_HOST and TG_PROXY_PORT:
+        proxy_dict = {
+            "proxy_type": TG_PROXY_TYPE,
+            "addr": TG_PROXY_HOST,
+            "port": TG_PROXY_PORT,
+        }
+        if TG_PROXY_USERNAME:
+            proxy_dict["username"] = TG_PROXY_USERNAME
+        if TG_PROXY_PASSWORD:
+            proxy_dict["password"] = TG_PROXY_PASSWORD
+        logger.info(
+            "Telethon: %s proxy %s:%s",
+            TG_PROXY_TYPE.upper(), TG_PROXY_HOST, TG_PROXY_PORT,
+        )
+        kwargs["proxy"] = proxy_dict
+    # Приоритет 2: MTProto прокси (старый формат)
+    elif TG_MTPROTO_HOST and TG_MTPROTO_PORT and TG_MTPROTO_SECRET:
         logger.info(
             "Telethon: MTProto proxy %s:%s",
             TG_MTPROTO_HOST, TG_MTPROTO_PORT,
@@ -29,7 +48,7 @@ def _build_telegram_client() -> TelegramClient:
         kwargs["connection"] = connection.ConnectionTcpMTProxyRandomizedIntermediate
         kwargs["proxy"] = (TG_MTPROTO_HOST, TG_MTPROTO_PORT, TG_MTPROTO_SECRET)
     else:
-        logger.info("Telethon: прямое подключение (без MTProto proxy)")
+        logger.info("Telethon: прямое подключение (без прокси)")
 
     return TelegramClient(TG_SESSION_NAME, TG_API_ID, TG_API_HASH, **kwargs)
 
@@ -43,8 +62,25 @@ class UserClient:
         self.notification_callback = notification_callback
         self._monitored_chat_ids: set[int] = set()
         self._running = False
+        self._paused = False
         self._me_id: int | None = None
         self._ai_semaphore = asyncio.Semaphore(5)
+        self._dialog_locks: dict[int, asyncio.Lock] = {}
+
+    @property
+    def is_paused(self) -> bool:
+        """Бот на паузе — не обрабатывает новые сообщения и не отправляет."""
+        return self._paused
+
+    async def pause(self):
+        """Поставить бота на паузу (не обрабатывает новые сообщения)."""
+        self._paused = True
+        logger.info("Бот поставлен на паузу владельцем")
+
+    async def resume(self):
+        """Снять бота с паузы."""
+        self._paused = False
+        logger.info("Бот снят с паузы владельцем")
 
     async def start(self):
         """Запуск клиента и авторизация."""
@@ -78,6 +114,8 @@ class UserClient:
         @self.client.on(events.NewMessage())
         async def on_new_message(event):
             """Обработка нового сообщения в чате."""
+            if self._paused:
+                return
             chat_id = event.chat_id
             if chat_id not in self._monitored_chat_ids:
                 return
@@ -92,6 +130,8 @@ class UserClient:
         @self.client.on(events.NewMessage(incoming=True))
         async def on_private_message(event):
             """Обработка входящих личных сообщений (ответы клиентов в диалогах)."""
+            if self._paused:
+                return
             if event.is_private:
                 if event.sender_id == self._me_id:
                     return
@@ -229,34 +269,36 @@ class UserClient:
     async def _process_private_message(self, event):
         """Обработка входящего ЛС — ответ клиента в активном диалоге."""
         sender_id = event.sender_id
-        text = event.message.text or ""
+        lock = self._dialog_locks.setdefault(sender_id, asyncio.Lock())
+        async with lock:
+            text = event.message.text or ""
+            dialog = await db.get_dialog_by_sender(sender_id)
+            if not dialog:
+                logger.debug(f"ЛС от {sender_id} без активного диалога: {text[:50]}...")
+                return
+            if dialog["stage"] in ("ENDED", "CLOSED", "HANDOFF") or dialog.get("do_not_contact"):
+                logger.info(f"ЛС для завершённого диалога #{dialog['id']} оставлено владельцу")
+                if dialog["stage"] == "HANDOFF" and self.notification_callback:
+                    await self.notification_callback(
+                        lead_id=dialog["lead_id"], chat_name="ЛС",
+                        sender_name=dialog["sender_name"], sender_username=dialog.get("sender_username"),
+                        message_text=text, category="HUMAN_REQUIRED",
+                        sender_id=dialog["sender_id"], dialog_id=dialog["id"],
+                        reason="Клиент написал после передачи диалога",
+                    )
+                return
 
-        # Проверяем, есть ли активный диалог с этим пользователем
-        dialog = await db.get_dialog_by_sender(sender_id)
-        if not dialog:
-            logger.debug(f"ЛС от {sender_id} без активного диалога: {text[:50]}...")
-            return
+            await db.log_message(0, sender_id, dialog["sender_name"], text,
+                                 event.message.id, "incoming")
+            ab_variant = dialog.get("ab_variant", 0)
+            if ab_variant is not None and ab_variant >= 0 and dialog["stage"] in ("INITIATING", "QUALIFYING"):
+                messages = json.loads(dialog.get("ai_messages_json") or "[]")
+                assistant_count = sum(1 for m in messages if m.get("role") == "assistant")
+                if assistant_count <= 1:
+                    await db.ab_record_reply(ab_variant)
+                    logger.info(f"A/B: клиент ответил на вариант #{ab_variant} (диалог #{dialog['id']})")
 
-        # A/B: если клиент ответил и у диалога есть ab_variant — фиксируем конверсию
-        # (стадия уже QUALIFYING т.к. обновляется сразу после отправки первого сообщения)
-        ab_variant = dialog.get("ab_variant", 0)
-        if ab_variant is not None and ab_variant >= 0 and dialog["stage"] in ("INITIATING", "QUALIFYING"):
-            # Проверяем что это первый ответ (в истории только 2 сообщения: context + first_message)
-            messages = json.loads(dialog.get("ai_messages_json") or "[]")
-            assistant_count = sum(1 for m in messages if m.get("role") == "assistant")
-            if assistant_count <= 1:
-                await db.ab_record_reply(ab_variant)
-                logger.info(f"A/B: клиент ответил на вариант #{ab_variant} (диалог #{dialog['id']})")
-
-        # Проверяем стадию диалога
-        if dialog["stage"] in ("TASK_RECEIVED", "ENDED", "CLOSING"):
-            # Если на стадии TASK_RECEIVED и клиент пишет — возможно дополняет задачу
-            if dialog["stage"] == "TASK_RECEIVED":
-                await self._handle_task_received_reply(dialog, event, text)
-            return
-
-        # На стадиях QUALIFYING / NEGOTIATING — AI продолжает диалог
-        await self._continue_dialog(dialog, text)
+            await self._continue_dialog(dialog, text)
 
     async def _handle_task_received_reply(self, dialog: dict, event, text: str):
         """Обработка ответа клиента на стадии TASK_RECEIVED (уточнение задачи)."""
@@ -282,57 +324,208 @@ class UserClient:
             )
 
     async def _continue_dialog(self, dialog: dict, client_message: str):
-        """Продолжение диалога AI-ответом."""
-        import ai_engine
+        """Продолжение диалога структурированным контуром продаж."""
+        import sales_engine
 
-        # Загружаем историю
         messages = json.loads(dialog.get("ai_messages_json") or "[]")
         messages.append({"role": "user", "content": client_message})
-
-        # Сохраняем обновлённую историю
         await db.update_dialog_messages(dialog["id"], json.dumps(messages, ensure_ascii=False))
 
-        # Генерируем ответ AI
-        result = await ai_engine.generate_dialogue_response(
-            messages_history=messages,
-            stage=dialog["stage"],
-            price=dialog.get("price"),
-        )
-
-        if result is None:
-            logger.error(f"Ошибка генерации ответа для диалога #{dialog['id']}")
+        try:
+            analysis = await sales_engine.analyze_turn(dialog, messages, client_message)
+        except Exception as e:
+            logger.error(f"Ошибка анализа диалога #{dialog['id']}: {e}", exc_info=True)
+            if self.notification_callback:
+                await self.notification_callback(
+                    lead_id=dialog["lead_id"], chat_name="ЛС",
+                    sender_name=dialog["sender_name"], sender_username=dialog.get("sender_username"),
+                    message_text=client_message, category="HUMAN_REQUIRED",
+                    sender_id=dialog["sender_id"], dialog_id=dialog["id"],
+                    reason="AI не смог надёжно проанализировать сообщение",
+                )
             return
 
-        ai_response, new_stage = result
+        updates, quote = sales_engine.merge_state(dialog, analysis)
+        await db.update_dialog_sales_data(dialog["id"], **updates)
+        dialog = {**dialog, **updates}
+        services = json.loads(dialog.get("service_codes_json") or "[]")
+        requirements = json.loads(dialog.get("requirements_json") or "[]")
+        intent = analysis["intent"]
 
-        # Добавляем ответ AI в историю
-        messages.append({"role": "assistant", "content": ai_response})
-        await db.update_dialog_messages(dialog["id"], json.dumps(messages, ensure_ascii=False))
+        if intent == "DO_NOT_CONTACT":
+            await db.update_dialog_sales_data(dialog["id"], do_not_contact=1)
+            await db.update_dialog_stage(dialog["id"], "ENDED")
+            logger.info(f"Диалог #{dialog['id']} закрыт: запрет дальнейшего контакта")
+            return
 
-        # Обновляем стадию
-        await db.update_dialog_stage(dialog["id"], new_stage)
+        if intent == "HARD_REFUSAL":
+            await self._send_and_record(
+                dialog, messages, "Понял, спасибо за прямой ответ. Больше не буду отвлекать.", "ENDED"
+            )
+            return
 
-        # Отправляем ответ клиенту
-        await self._send_message(dialog["sender_id"], ai_response)
+        if not sales_engine.is_supported_country(dialog.get("country")):
+            await self._send_and_record(
+                dialog, messages,
+                "Спасибо, что уточнили. К сожалению, сейчас мы не работаем с вашим регионом. Всего доброго.",
+                "ENDED",
+            )
+            return
 
-        # Если стадия сменилась на TASK_RECEIVED — уведомляем владельца
-        if new_stage == "TASK_RECEIVED" and dialog["stage"] != "TASK_RECEIVED":
+        interested = (
+            dialog.get("interest_level") == "HOT" or analysis.get("asks_price")
+            or analysis.get("ready_to_work") or intent in {"ASKS_PAYMENT", "READY_TO_WORK"}
+        )
+        if interested and not dialog.get("country"):
+            await db.update_dialog_sales_data(dialog["id"], country_asked=1)
+            reply = await sales_engine.generate_reply(
+                dialog, messages,
+                "Клиент проявил предметный интерес. Уточни только страну, из которой он обращается, "
+                "объяснив одним коротким оборотом, что это нужно для выбора доступных сервисов.",
+            )
+            if reply:
+                await self._send_and_record(dialog, messages, reply, "QUALIFYING")
+            else:
+                await self._notify_human_required(dialog, client_message, "Не удалось сформировать вопрос о стране")
+            return
+
+        unresolved = quote.get("needs_owner", []) + quote.get("unknown", [])
+        needs_price = analysis.get("asks_price") or analysis.get("task_clear") or analysis.get("ready_to_work")
+        if unresolved and needs_price and not dialog.get("price"):
+            description = ", ".join(unresolved)
+            recommendation = await sales_engine.recommend_price(description, requirements)
+            await db.update_dialog_sales_data(dialog["id"], awaiting_owner_price=1)
+            await db.update_dialog_stage(dialog["id"], "AWAITING_OWNER_PRICE")
+            brief = sales_engine.build_brief(dialog, services, requirements, quote)
             if self.notification_callback:
-                # Собираем описание задачи из последних сообщений
-                task_text = "\n".join(
-                    m["content"] for m in messages
-                    if m["role"] == "user"
-                )
                 await self.notification_callback(
-                    lead_id=dialog["lead_id"],
-                    chat_name="ЛС",
-                    sender_name=dialog["sender_name"],
-                    sender_username=dialog.get("sender_username"),
-                    message_text=task_text,
-                    category="TASK_READY",
-                    sender_id=dialog["sender_id"],
-                    dialog_id=dialog["id"],
+                    lead_id=dialog["lead_id"], chat_name="ЛС",
+                    sender_name=dialog["sender_name"], sender_username=dialog.get("sender_username"),
+                    message_text=brief, category="PRICE_REQUIRED",
+                    sender_id=dialog["sender_id"], dialog_id=dialog["id"],
+                    recommendation=recommendation, service_description=description,
+                    country=dialog.get("country"),
                 )
+            reply = await sales_engine.generate_reply(
+                dialog, messages,
+                "Цена этой услуги отсутствует в прайсе. Скажи, что уточнишь стоимость по описанному "
+                "объёму и вернёшься с точной цифрой. Не называй цену и не задавай новый вопрос.",
+            )
+            if reply:
+                await self._send_and_record(dialog, messages, reply, "AWAITING_OWNER_PRICE")
+            else:
+                await self._notify_human_required(dialog, client_message, "Не удалось сообщить об уточнении цены")
+            return
+
+        if dialog.get("stage") == "AWAITING_OWNER_PRICE" and not dialog.get("price"):
+            return
+
+        if ((analysis.get("asks_price") or (analysis.get("task_clear") and interested))
+                and quote.get("complete") and not dialog.get("price")):
+            price = sales_engine.format_quote(quote)
+            await db.update_dialog_price(dialog["id"], price)
+            dialog["price"] = price
+            reply = await sales_engine.generate_reply(
+                dialog, messages,
+                f"Назови рассчитанную по прайсу стоимость {price}. Коротко уточни, что расчёт относится "
+                "к уже описанному объёму, и задай один вопрос, подходит ли такой состав работ.",
+            )
+            if reply:
+                await self._send_and_record(dialog, messages, reply, "NEGOTIATING")
+            else:
+                await self._notify_human_required(dialog, client_message, "Не удалось сообщить рассчитанную цену")
+            return
+
+        ready = bool(dialog.get("ready_to_work") or analysis.get("ready_to_work") or intent == "READY_TO_WORK")
+        if ready and not dialog.get("company"):
+            reply = await sales_engine.generate_reply(
+                dialog, messages,
+                "Клиент готов работать. Уточни, на кого зафиксировать договорённости: на него лично "
+                "или на компанию; если компания — попроси название. Один вопрос.",
+            )
+            if reply:
+                await self._send_and_record(dialog, messages, reply, "QUALIFYING")
+            else:
+                await self._notify_human_required(dialog, client_message, "Не удалось уточнить данные клиента")
+            return
+
+        if ready and services and requirements and dialog.get("country"):
+            brief = await sales_engine.compose_brief(dialog, services, requirements, quote)
+            await db.update_dialog_sales_data(
+                dialog["id"], brief_text=brief, handoff_notified=1, awaiting_owner_price=0
+            )
+            await db.update_dialog_stage(dialog["id"], "HANDOFF")
+            reply = await sales_engine.generate_reply(
+                dialog, messages,
+                "Подтверди, что основные вводные зафиксированы и дальше подключится разработчик. "
+                "Если клиент спрашивал об оплате, скажи только, что доступна криптовалюта через Telegram. "
+                "Не задавай вопросов и не обещай сроки.",
+            )
+            if reply:
+                await self._send_and_record(dialog, messages, reply, "HANDOFF")
+            if self.notification_callback:
+                await self.notification_callback(
+                    lead_id=dialog["lead_id"], chat_name="ЛС",
+                    sender_name=dialog["sender_name"], sender_username=dialog.get("sender_username"),
+                    message_text=brief, category="DEAL_READY",
+                    sender_id=dialog["sender_id"], dialog_id=dialog["id"],
+                    country=dialog.get("country"), brief=brief,
+                )
+            return
+
+        objection_directives = {
+            "OBJECTION_PRICE": (
+                "Спокойно признай, что цена важна. Не оправдывайся и не давай скидку. "
+                "Задай один вопрос: с каким бюджетом или вариантом клиент сравнивает."
+            ),
+            "OBJECTION_TRUST": (
+                "Не спорь с сомнением. Уточни одним вопросом, какое подтверждение надёжности "
+                "важнее клиенту: этапы, договорённости, демонстрация или связь с разработчиком."
+            ),
+            "OBJECTION_TIMING": (
+                "Прими ограничение по срокам и уточни, к какой дате результат действительно нужен. "
+                "Не создавай искусственную срочность."
+            ),
+            "THINKING": (
+                "Не дави. Спроси одним коротким вопросом, какой момент клиент хочет обдумать, "
+                "и предложи вернуться к разговору в удобное время."
+            ),
+        }
+        directive = objection_directives.get(intent) or analysis.get("reply_goal") or (
+            "Ответь по существу и задай один короткий вопрос, который уточняет задачу клиента. "
+            "Не продавай раньше времени и не называй цену без расчёта."
+        )
+        if analysis.get("asks_payment"):
+            directive = (
+                "Скажи, что доступна оплата криптовалютой через Telegram и детали предоставит "
+                "разработчик после согласования задачи. Затем задай один вопрос по недостающим требованиям."
+            )
+        reply = await sales_engine.generate_reply(dialog, messages, directive)
+        if reply:
+            next_stage = "WAITING_CLIENT" if intent in {"OBJECTION_TIMING", "THINKING"} else "QUALIFYING"
+            await self._send_and_record(dialog, messages, reply, next_stage)
+        else:
+            await self._notify_human_required(dialog, client_message, "Не удалось сформировать безопасный ответ")
+
+    async def _send_and_record(self, dialog: dict, messages: list[dict], text: str,
+                               stage: str) -> bool:
+        success = await self._send_message(dialog["sender_id"], text)
+        if not success:
+            await self._notify_human_required(dialog, text, "Сообщение клиенту не отправлено")
+            return False
+        messages.append({"role": "assistant", "content": text})
+        await db.update_dialog_messages(dialog["id"], json.dumps(messages, ensure_ascii=False))
+        await db.update_dialog_stage(dialog["id"], stage)
+        return True
+
+    async def _notify_human_required(self, dialog: dict, message_text: str, reason: str):
+        if self.notification_callback:
+            await self.notification_callback(
+                lead_id=dialog["lead_id"], chat_name="ЛС",
+                sender_name=dialog["sender_name"], sender_username=dialog.get("sender_username"),
+                message_text=message_text, category="HUMAN_REQUIRED",
+                sender_id=dialog["sender_id"], dialog_id=dialog["id"], reason=reason,
+            )
 
     async def _anti_repeat_note(self) -> str:
         """Формирует блок с последними отправленными первыми сообщениями,
@@ -403,6 +596,12 @@ class UserClient:
             sender_id=lead["sender_id"],
             sender_name=lead["sender_name"],
             sender_username=lead.get("sender_username"),
+            lead_source="regular",
+        )
+        await db.update_dialog_sales_data(
+            dialog_id,
+            client_name=lead["sender_name"],
+            contact=f"@{lead['sender_username']}" if lead.get("sender_username") else None,
         )
 
         # Формируем контекст для первого сообщения
@@ -483,6 +682,12 @@ class UserClient:
             sender_id=lead["sender_id"],
             sender_name=lead["sender_name"],
             sender_username=lead.get("sender_username"),
+            lead_source="cold",
+        )
+        await db.update_dialog_sales_data(
+            dialog_id,
+            client_name=lead["sender_name"],
+            contact=f"@{lead['sender_username']}" if lead.get("sender_username") else None,
         )
 
         context = (
@@ -498,10 +703,13 @@ class UserClient:
         if lead.get("hook"):
             context += f"Рекомендуемый подход: {lead['hook']}\n"
         context += (
-            "\nНапишите первое сообщение этому человеку. Будьте деликатны: "
-            "он не просил помощи. Кратко представьтесь, мягко зацепитесь за его "
-            "сообщение и предложите обсудить, чем можете быть полезны. "
-            "Не более 2-3 предложений, без навязчивости."
+            "\nНапишите первое сообщение этому человеку. Он не просил услуги, поэтому ничего "
+            "не продавайте и не перечисляйте свои возможности. Отреагируйте на конкретную боль "
+            "одной короткой фразой и задайте один естественный диагностический вопрос. "
+            "Не используйте слова «автоматизация», «решение», «проект», «предложение» и "
+            "не пишите общие фразы вроде «я помогаю бизнесам». Не более 2 предложений. "
+            "Пример нужного тона: «Да, с первичкой легко утонуть. А больше времени съедает "
+            "перенос данных или их проверка?»"
         )
 
         # A/B: генерируем 3 варианта, выбираем по весам
@@ -589,43 +797,32 @@ class UserClient:
             return True
         return False
 
-    async def continue_dialog_with_price(self, dialog_id: int, price: str):
-        """Продолжение диалога с указанной ценой (команда от владельца)."""
-        import ai_engine
+    async def continue_dialog_with_price(self, dialog_ref: str, price: str) -> bool:
+        """Продолжение диалога с ценой владельца по ID диалога или username."""
+        import sales_engine
 
-        dialog = await db.get_dialog_by_id(dialog_id)
+        dialog = await db.get_dialog_by_identifier(str(dialog_ref))
         if not dialog:
-            logger.error(f"Диалог #{dialog_id} не найден")
-            return
+            logger.error(f"Диалог {dialog_ref} не найден")
+            return False
+        if dialog["stage"] in ("ENDED", "CLOSED", "HANDOFF") or dialog.get("do_not_contact"):
+            logger.warning(f"Нельзя назначить цену завершённому диалогу #{dialog['id']}")
+            return False
 
-        await db.update_dialog_price(dialog_id, price)
-        await db.update_dialog_stage(dialog_id, "NEGOTIATING")
-
+        await db.update_dialog_price(dialog["id"], price)
+        await db.update_dialog_sales_data(dialog["id"], awaiting_owner_price=0)
+        dialog["price"] = price
+        dialog["awaiting_owner_price"] = 0
         messages = json.loads(dialog.get("ai_messages_json") or "[]")
-
-        # Добавляем инструкцию менеджера
-        manager_msg = (
-            f"[ВНУТРЕННЯЯ КОМАНДА] Цена для клиента: {price}. "
-            f"Теперь презентуй эту цену клиенту и продолжай переговоры."
+        reply = await sales_engine.generate_reply(
+            dialog, messages,
+            f"Владелец подтвердил цену: {price}. Сообщи её клиенту без изменения и коротко "
+            "объясни, что точный состав работ фиксируется в ТЗ. Задай один вопрос, подходит ли цена.",
         )
-        messages.append({"role": "user", "content": manager_msg})
-
-        result = await ai_engine.generate_dialogue_response(
-            messages_history=messages,
-            stage="NEGOTIATING",
-            price=price,
-        )
-
-        if result is None:
-            logger.error("Ошибка генерации ответа с ценой")
-            return
-
-        ai_response, new_stage = result
-        messages.append({"role": "assistant", "content": ai_response})
-        await db.update_dialog_messages(dialog_id, json.dumps(messages, ensure_ascii=False))
-        await db.update_dialog_stage(dialog_id, new_stage)
-
-        await self._send_message(dialog["sender_id"], ai_response)
+        if not reply:
+            logger.error(f"Ошибка генерации ответа с ценой для диалога #{dialog['id']}")
+            return False
+        return await self._send_and_record(dialog, messages, reply, "NEGOTIATING")
 
     async def send_scheduled_message(self, chat_id: int, text: str):
         """Отправка запланированного сообщения в чат (для scheduler)."""

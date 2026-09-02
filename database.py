@@ -55,12 +55,27 @@ CREATE TABLE IF NOT EXISTS dialogs (
     sender_id INTEGER NOT NULL,
     sender_name TEXT,
     sender_username TEXT,
+    lead_source TEXT DEFAULT 'regular',
     stage TEXT DEFAULT 'INITIATING',
     ai_messages_json TEXT DEFAULT '[]',
     price TEXT,
     followup_count INTEGER DEFAULT 0,
     last_followup_at TEXT,
     ab_variant INTEGER DEFAULT 0,
+    country TEXT,
+    client_name TEXT,
+    company TEXT,
+    contact TEXT,
+    service_codes_json TEXT DEFAULT '[]',
+    requirements_json TEXT DEFAULT '[]',
+    brief_text TEXT,
+    sales_intent TEXT,
+    interest_level TEXT DEFAULT 'COLD',
+    awaiting_owner_price INTEGER DEFAULT 0,
+    country_asked INTEGER DEFAULT 0,
+    handoff_notified INTEGER DEFAULT 0,
+    ready_to_work INTEGER DEFAULT 0,
+    do_not_contact INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (lead_id) REFERENCES leads(id)
@@ -220,6 +235,26 @@ async def _migrate_dialogs(db):
         await db.execute("ALTER TABLE dialogs ADD COLUMN last_followup_at TEXT")
     if "ab_variant" not in columns:
         await db.execute("ALTER TABLE dialogs ADD COLUMN ab_variant INTEGER DEFAULT 0")
+    additions = {
+        "lead_source": "TEXT DEFAULT 'regular'",
+        "country": "TEXT",
+        "client_name": "TEXT",
+        "company": "TEXT",
+        "contact": "TEXT",
+        "service_codes_json": "TEXT DEFAULT '[]'",
+        "requirements_json": "TEXT DEFAULT '[]'",
+        "brief_text": "TEXT",
+        "sales_intent": "TEXT",
+        "interest_level": "TEXT DEFAULT 'COLD'",
+        "awaiting_owner_price": "INTEGER DEFAULT 0",
+        "country_asked": "INTEGER DEFAULT 0",
+        "handoff_notified": "INTEGER DEFAULT 0",
+        "ready_to_work": "INTEGER DEFAULT 0",
+        "do_not_contact": "INTEGER DEFAULT 0",
+    }
+    for name, definition in additions.items():
+        if name not in columns:
+            await db.execute(f"ALTER TABLE dialogs ADD COLUMN {name} {definition}")
 
 
 # === Chats ===
@@ -362,7 +397,7 @@ async def get_chat(chat_id: int) -> dict | None:
             return dict(row) if row else None
 
 
-async def get_recent_broadcasts(chat_id: int, limit: int = 5) -> list[str]:
+async def get_recent_broadcasts(chat_id: int, limit: int = 20) -> list[str]:
     """Последние отправленные рассылки в чат (для неповторяемости текстов)."""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
@@ -584,12 +619,12 @@ async def get_lead(lead_id: int) -> dict | None:
 # === Dialogs ===
 
 async def create_dialog(lead_id: int, sender_id: int, sender_name: str,
-                        sender_username: str) -> int:
+                        sender_username: str, lead_source: str = "regular") -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         cursor = await db.execute(
-            """INSERT INTO dialogs (lead_id, sender_id, sender_name, sender_username)
-               VALUES (?, ?, ?, ?)""",
-            (lead_id, sender_id, sender_name, sender_username)
+            """INSERT INTO dialogs (lead_id, sender_id, sender_name, sender_username, lead_source)
+               VALUES (?, ?, ?, ?, ?)""",
+            (lead_id, sender_id, sender_name, sender_username, lead_source)
         )
         await db.commit()
         return cursor.lastrowid
@@ -651,6 +686,42 @@ async def get_dialog_by_id(dialog_id: int) -> dict | None:
         ) as cursor:
             row = await cursor.fetchone()
             return dict(row) if row else None
+
+
+async def get_dialog_by_identifier(identifier: str) -> dict | None:
+    value = identifier.strip().lstrip("@")
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        if value.isdigit():
+            query = "SELECT * FROM dialogs WHERE id = ?"
+            params = (int(value),)
+        else:
+            query = "SELECT * FROM dialogs WHERE lower(sender_username) = lower(?) ORDER BY id DESC LIMIT 1"
+            params = (value,)
+        async with db.execute(query, params) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def update_dialog_sales_data(dialog_id: int, **fields):
+    allowed = {
+        "country", "client_name", "company", "contact", "service_codes_json",
+        "requirements_json", "brief_text", "sales_intent", "interest_level",
+        "awaiting_owner_price", "country_asked", "handoff_notified", "ready_to_work",
+        "do_not_contact",
+    }
+    updates = [(name, value) for name, value in fields.items() if name in allowed]
+    if not updates:
+        return
+    assignments = ", ".join(f"{name} = ?" for name, _ in updates)
+    values = [value for _, value in updates]
+    values.append(dialog_id)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            f"UPDATE dialogs SET {assignments}, updated_at = datetime('now') WHERE id = ?",
+            values,
+        )
+        await db.commit()
 
 
 async def get_stale_dialogs(hours_threshold: int = 24, max_followups: int = 2) -> list[dict]:
