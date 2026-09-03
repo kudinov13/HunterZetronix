@@ -191,6 +191,8 @@ async def _migrate_chats(db):
         await db.execute("ALTER TABLE chats ADD COLUMN broadcast_times TEXT")
     if "is_direct_promo" not in columns:
         await db.execute("ALTER TABLE chats ADD COLUMN is_direct_promo INTEGER DEFAULT 0")
+    if "chat_niche" not in columns:
+        await db.execute("ALTER TABLE chats ADD COLUMN chat_niche TEXT")
 
 
 async def _migrate_messages_log(db):
@@ -334,13 +336,13 @@ async def update_chat(chat_id: int, chat_name: str = None, is_monitored: bool = 
                       is_broadcast: bool = None, chat_rules: str = None,
                       broadcast_times: str = None, message_text: str = None,
                       message_variants: list[str] = None, schedule_cron: str = None,
-                      is_direct_promo: bool = None):
+                      is_direct_promo: bool = None, chat_niche: str = None):
     """Полное обновление чата (для API синхронизации с GUI)."""
     import json
     async with aiosqlite.connect(DB_PATH) as db:
         updates = []
         params = []
-        
+
         if chat_name is not None:
             updates.append("chat_name = ?")
             params.append(chat_name)
@@ -368,6 +370,9 @@ async def update_chat(chat_id: int, chat_name: str = None, is_monitored: bool = 
         if is_direct_promo is not None:
             updates.append("is_direct_promo = ?")
             params.append(1 if is_direct_promo else 0)
+        if chat_niche is not None:
+            updates.append("chat_niche = ?")
+            params.append(chat_niche)
         
         if updates:
             params.append(chat_id)

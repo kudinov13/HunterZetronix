@@ -189,6 +189,14 @@ class App:
         ttk.Radiobutton(gender_frame, text="Женский", variable=self.gender_var,
                         value="female", command=self.save_gender).pack(side=tk.LEFT)
 
+        ttk.Label(right, text="Тематика чата (необязательно — для точности AI-рассылок):").pack(
+            anchor=tk.W, pady=(8, 0))
+        self.niche_var = tk.StringVar()
+        ttk.Entry(right, textvariable=self.niche_var, width=44).pack(anchor=tk.W, pady=(2, 4))
+        ttk.Label(right, text="Например: «рестораны и общепит», «недвижимость», «маркетплейсы». "
+                              "Если пусто — AI определит нишу по названию и сообщениям чата.",
+                  foreground="gray", wraplength=320).pack(anchor=tk.W, pady=(0, 4))
+
         ttk.Label(right, text="Правила чата (вставьте текст правил вручную):").pack(anchor=tk.W)
         self.rules_text = tk.Text(right, height=10, width=44, wrap=tk.WORD)
         self.rules_text.pack(fill=tk.X, pady=(2, 4))
@@ -442,6 +450,7 @@ class App:
         self._toggle_no_rules()
 
         self.times_var.set(chat.get("broadcast_times") or "")
+        self.niche_var.set(chat.get("chat_niche") or "")
 
     # === Кнопки ===
 
@@ -544,6 +553,7 @@ class App:
             "chat_rules": rules,
             "broadcast_times": times,
             "is_direct_promo": is_direct,
+            "chat_niche": self.niche_var.get().strip(),
         }
 
         self.status_var.set("💾 Сохранение на сервере...")

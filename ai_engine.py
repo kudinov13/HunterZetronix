@@ -685,11 +685,13 @@ def _broadcast_message_from_result(result: dict) -> str:
 async def generate_broadcast(chat_rules: str, recent_messages: list[str],
                              now_str: str, is_direct_promo: bool = False,
                              chat_name: str = "",
-                             recent_chat_messages: list[str] | None = None) -> dict | None:
+                             recent_chat_messages: list[str] | None = None,
+                             chat_niche: str = "") -> dict | None:
     """Генерация рекламной рассылки с учётом правил чата.
 
     Если is_direct_promo=True — используется прямой промпт (для чатов без правил).
-    chat_name и recent_chat_messages помогают AI определить нишу чата.
+    chat_niche — ручная тематика чата (приоритет). Если пусто — AI использует
+    chat_name и recent_chat_messages для определения ниши.
     Возвращает {"skip": bool, "reason": str, "message": str} или None при ошибке.
     """
     try:
@@ -707,8 +709,11 @@ async def generate_broadcast(chat_rules: str, recent_messages: list[str],
                 "entry_point": "",
             }
 
-        # Контекст чата: название + последние сообщения из чата
+        # Контекст чата: ручная тематика (приоритет) + название + сообщения
         chat_context = ""
+        niche = (chat_niche or "").strip()
+        if niche:
+            chat_context += f"Тематика чата (указана владельцем): «{niche}».\n"
         if chat_name:
             chat_context += f"Название чата: «{chat_name}».\n"
         if recent_chat_messages:

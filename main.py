@@ -125,7 +125,8 @@ async def main():
             message_text=data.get("message_text", ""),
             message_variants=data.get("message_variants"),
             schedule_cron=data.get("schedule_cron"),
-            is_direct_promo=data.get("is_direct_promo", False)
+            is_direct_promo=data.get("is_direct_promo", False),
+            chat_niche=data.get("chat_niche", "")
         )
         # Применяем изменения сразу, без перезапуска сервиса
         await user_client.reload_chats()

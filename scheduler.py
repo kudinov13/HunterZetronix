@@ -227,10 +227,12 @@ class MessageScheduler:
 
         recent = await db.get_recent_broadcasts(chat_id)
         recent_chat = await db.get_recent_incoming_messages(chat_id, limit=15)
+        chat_niche = (chat.get("chat_niche") or "").strip()
         result = await ai_engine.generate_broadcast(rules, recent, now_ru_str(),
                                                      is_direct_promo=is_direct,
                                                      chat_name=chat_name,
-                                                     recent_chat_messages=recent_chat)
+                                                     recent_chat_messages=recent_chat,
+                                                     chat_niche=chat_niche)
 
         if result is None:
             await self._notify_owner(
@@ -308,10 +310,12 @@ class MessageScheduler:
         recent = await db.get_recent_broadcasts(chat_id)
         recent_chat = await db.get_recent_incoming_messages(chat_id, limit=15)
         chat_name = chat.get("chat_name", str(chat_id))
+        chat_niche = (chat.get("chat_niche") or "").strip()
         return await ai_engine.generate_broadcast(rules, recent, now_ru_str(),
                                                      is_direct_promo=is_direct,
                                                      chat_name=chat_name,
-                                                     recent_chat_messages=recent_chat)
+                                                     recent_chat_messages=recent_chat,
+                                                     chat_niche=chat_niche)
 
     async def reload_jobs(self):
         """Перезагрузка всех задач (после изменения расписаний)."""
