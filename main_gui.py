@@ -55,6 +55,267 @@ BROADCAST_LANGUAGES = {
 
 TIMES_RE = re.compile(r"^\s*([01]?\d|2[0-3]):[0-5]\d(\s*,\s*([01]?\d|2[0-3]):[0-5]\d)*\s*$")
 
+# ═══════════════════════════════════════════════════════════════
+# БРУТАЛИСТСКАЯ ЦВЕТОВАЯ СИСТЕМА
+# ═══════════════════════════════════════════════════════════════
+
+C_BG = "#FFFFFF"          # основной фон
+C_BLACK = "#0A0A0A"       # чёрный (текст, шапка, кнопки)
+C_ACCENT = "#FF3B00"      # оранжевый акцент
+C_ACCENT_DIM = "#CC2F00"  # тёмный оранжевый (hover)
+C_GRAY = "#E8E8E8"        # светло-серый (поля ввода)
+C_GRAY_DARK = "#999999"   # тёмно-серый (вторичный текст)
+C_GRAY_BORDER = "#D0D0D0" # границы секций
+C_GREEN = "#008C2E"       # зелёный (статус OK)
+C_RED = "#CC0000"         # красный (ошибка)
+C_YELLOW = "#FFD600"      # жёлтый (предупреждение)
+C_PANEL = "#F5F5F5"       # фон панелей
+C_DISABLED = "#F0F0F0"    # отключенные поля
+
+# Шрифты
+F_TITLE = ("Consolas", 16, "bold")
+F_HEADER = ("Consolas", 11, "bold")
+F_BODY = ("Segoe UI", 10)
+F_BODY_BOLD = ("Segoe UI", 10, "bold")
+F_SMALL = ("Segoe UI", 9)
+F_SMALL_BOLD = ("Segoe UI", 9, "bold")
+F_MONO = ("Consolas", 10)
+F_BTN = ("Segoe UI", 10, "bold")
+F_STATUS = ("Consolas", 9, "bold")
+
+BORDER_W = 2  # толщина границ
+
+
+# ═══════════════════════════════════════════════════════════════
+# БРУТАЛИСТСКИЕ ВИДЖЕТЫ
+# ═══════════════════════════════════════════════════════════════
+
+class BFrame(tk.Frame):
+    """Фрейм с чёрной границей."""
+    def __init__(self, parent, bg=C_BG, border=True, **kw):
+        kw.setdefault("bg", bg)
+        if border:
+            kw.setdefault("highlightbackground", C_BLACK)
+            kw.setdefault("highlightthickness", BORDER_W)
+        super().__init__(parent, **kw)
+
+
+class BButton(tk.Button):
+    """Бруталистская кнопка: чёрный фон, белый текст, плоская."""
+    def __init__(self, parent, text, command=None, style="primary", **kw):
+        if style == "primary":
+            bg, fg, abg = C_BLACK, "#FFFFFF", C_ACCENT
+        elif style == "accent":
+            bg, fg, abg = C_ACCENT, "#FFFFFF", C_ACCENT_DIM
+        elif style == "danger":
+            bg, fg, abg = C_RED, "#FFFFFF", "#A00000"
+        elif style == "ghost":
+            bg, fg, abg = C_BG, C_BLACK, C_GRAY
+        else:
+            bg, fg, abg = C_BLACK, "#FFFFFF", C_ACCENT
+        kw.setdefault("text", text)
+        kw.setdefault("command", command)
+        kw.setdefault("bg", bg)
+        kw.setdefault("fg", fg)
+        kw.setdefault("activebackground", abg)
+        kw.setdefault("activeforeground", "#FFFFFF")
+        kw.setdefault("font", F_BTN)
+        kw.setdefault("relief", tk.FLAT)
+        kw.setdefault("cursor", "hand2")
+        kw.setdefault("borderwidth", 0)
+        kw.setdefault("padx", 16)
+        kw.setdefault("pady", 8)
+        super().__init__(parent, **kw)
+
+
+class BLabel(tk.Label):
+    """Бруталистская метка."""
+    def __init__(self, parent, text="", font=F_BODY, fg=C_BLACK, bg=C_BG, **kw):
+        kw.setdefault("text", text)
+        kw.setdefault("font", font)
+        kw.setdefault("fg", fg)
+        kw.setdefault("bg", bg)
+        kw.setdefault("anchor", tk.W)
+        super().__init__(parent, **kw)
+
+
+class BEntry(tk.Entry):
+    """Поле ввода с чёрной границей."""
+    def __init__(self, parent, **kw):
+        kw.setdefault("font", F_BODY)
+        kw.setdefault("bg", C_BG)
+        kw.setdefault("fg", C_BLACK)
+        kw.setdefault("insertbackground", C_BLACK)
+        kw.setdefault("relief", tk.FLAT)
+        kw.setdefault("highlightbackground", C_BLACK)
+        kw.setdefault("highlightthickness", 1)
+        kw.setdefault("highlightcolor", C_ACCENT)
+        super().__init__(parent, **kw)
+
+
+class BCheckbutton(tk.Checkbutton):
+    """Чекбокс: чёрный акцент."""
+    def __init__(self, parent, text="", **kw):
+        kw.setdefault("text", text)
+        kw.setdefault("font", F_BODY)
+        kw.setdefault("bg", C_BG)
+        kw.setdefault("fg", C_BLACK)
+        kw.setdefault("activebackground", C_BG)
+        kw.setdefault("activeforeground", C_BLACK)
+        kw.setdefault("selectcolor", C_BG)
+        kw.setdefault("relief", tk.FLAT)
+        super().__init__(parent, **kw)
+
+
+class BRadiobutton(tk.Radiobutton):
+    """Радиокнопка."""
+    def __init__(self, parent, text="", **kw):
+        kw.setdefault("text", text)
+        kw.setdefault("font", F_BODY)
+        kw.setdefault("bg", C_BG)
+        kw.setdefault("fg", C_BLACK)
+        kw.setdefault("activebackground", C_BG)
+        kw.setdefault("activeforeground", C_BLACK)
+        kw.setdefault("selectcolor", C_BG)
+        super().__init__(parent, **kw)
+
+
+class BCombobox(ttk.Combobox):
+    """Combobox с бруталистской темой."""
+    def __init__(self, parent, **kw):
+        super().__init__(parent, **kw)
+
+
+class BText(tk.Text):
+    """Многострочное поле с чёрной границей."""
+    def __init__(self, parent, **kw):
+        kw.setdefault("font", F_MONO)
+        kw.setdefault("bg", C_BG)
+        kw.setdefault("fg", C_BLACK)
+        kw.setdefault("insertbackground", C_BLACK)
+        kw.setdefault("relief", tk.FLAT)
+        kw.setdefault("highlightbackground", C_BLACK)
+        kw.setdefault("highlightthickness", 1)
+        kw.setdefault("highlightcolor", C_ACCENT)
+        kw.setdefault("padx", 6)
+        kw.setdefault("pady", 4)
+        super().__init__(parent, **kw)
+
+
+class ScrollableFrame(tk.Frame):
+    """Фрейм со скроллингом — для настроек, когда окно маленькое."""
+    def __init__(self, parent, bg=C_BG, **kw):
+        kw.setdefault("bg", bg)
+        super().__init__(parent, **kw)
+
+        self.canvas = tk.Canvas(self, bg=bg, highlightthickness=0,
+                                borderwidth=0)
+        self.scrollbar = tk.Scrollbar(self, orient=tk.VERTICAL,
+                                      command=self.canvas.yview,
+                                      bg=C_BLACK, troughcolor=C_GRAY)
+        self.scrollable = tk.Frame(self.canvas, bg=bg)
+
+        self.scrollable.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+        self._inner_id = self.canvas.create_window((0, 0), window=self.scrollable,
+                                                    anchor=tk.NW)
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
+
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Скролл колесом мыши
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        self.canvas.bind_all("<Button-4>", self._on_mousewheel)
+        self.canvas.bind_all("<Button-5>", self._on_mousewheel)
+
+    def _on_canvas_configure(self, event):
+        # Растягиваем внутренний фрейм по ширине canvas
+        self.canvas.itemconfig(self._inner_id, width=event.width)
+
+    def _on_mousewheel(self, event):
+        if sys.platform == "win32":
+            self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        else:
+            if event.num == 4:
+                self.canvas.yview_scroll(-1, "units")
+            elif event.num == 5:
+                self.canvas.yview_scroll(1, "units")
+
+
+class MessageDialog(tk.Toplevel):
+    """Диалог с копируемым текстом — для ошибок и тестовых сообщений."""
+    def __init__(self, parent, title, message, style="info"):
+        super().__init__(parent)
+        self.title(title)
+        self.configure(bg=C_BG)
+        self.transient(parent)
+        self.grab_set()
+
+        # Размер по длине текста
+        lines = message.split("\n")
+        max_len = max(len(l) for l in lines) if lines else 40
+        width = min(max(max_len + 4, 50), 90)
+        height = min(max(len(lines) + 6, 6), 30)
+        self.geometry(f"{width * 9}x{height * 22}")
+
+        # Шапка
+        if style == "error":
+            header_bg, header_fg, header_text = C_RED, "#FFFFFF", "ERROR"
+        elif style == "warn":
+            header_bg, header_fg, header_text = C_YELLOW, C_BLACK, "WARNING"
+        elif style == "success":
+            header_bg, header_fg, header_text = C_GREEN, "#FFFFFF", "RESULT"
+        else:
+            header_bg, header_fg, header_text = C_BLACK, "#FFFFFF", "INFO"
+
+        header = tk.Frame(self, bg=header_bg, height=36)
+        header.pack(fill=tk.X)
+        header.pack_propagate(False)
+        tk.Label(header, text=f"  {header_text}", font=F_HEADER,
+                 bg=header_bg, fg=header_fg, anchor=tk.W).pack(
+            side=tk.LEFT, fill=tk.X, expand=True, pady=8)
+
+        # Текстовое поле — копируемое
+        text_frame = tk.Frame(self, bg=C_BG, highlightbackground=C_BLACK,
+                              highlightthickness=BORDER_W)
+        text_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+
+        text = BText(text_frame, wrap=tk.WORD, height=height - 6)
+        text.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+        text.insert("1.0", message)
+        text.configure(state=tk.NORMAL)  # оставляем selectable
+
+        # Кнопки
+        btn_frame = tk.Frame(self, bg=C_BG)
+        btn_frame.pack(fill=tk.X, padx=8, pady=(0, 8))
+
+        BButton(btn_frame, "COPY", command=lambda: self._copy(text),
+                style="accent").pack(side=tk.LEFT)
+        BButton(btn_frame, "CLOSE", command=self.destroy,
+                style="primary").pack(side=tk.RIGHT)
+
+        # Enter / Esc закрывают
+        self.bind("<Escape>", lambda e: self.destroy())
+        self.bind("<Return>", lambda e: self.destroy())
+
+        self.focus_set()
+        text.focus_set()
+
+    def _copy(self, text_widget):
+        content = text_widget.get("1.0", tk.END).strip()
+        self.clipboard_clear()
+        self.clipboard_append(content)
+        self.update()
+
+
+# ═══════════════════════════════════════════════════════════════
+# HTTP КЛИЕНТ
+# ═══════════════════════════════════════════════════════════════
 
 class ServerAPI:
     """HTTP-клиент к API сервера (urllib, без внешних зависимостей)."""
@@ -94,7 +355,6 @@ class ServerAPI:
         return self._request("POST", "/api/chats", chat_data).get("success", False)
 
     def sync_dialogs(self) -> int:
-        # retries=0: повтор мог бы дважды дёргать Telegram
         return self._request("POST", "/api/sync_dialogs", {},
                              timeout=300, retries=0).get("count", 0)
 
@@ -118,6 +378,10 @@ class ServerAPI:
         return self._request("POST", "/api/resume", {})
 
 
+# ═══════════════════════════════════════════════════════════════
+# ГЛАВНОЕ ПРИЛОЖЕНИЕ
+# ═══════════════════════════════════════════════════════════════
+
 class App:
     def __init__(self, root: tk.Tk, api: ServerAPI):
         self.root = root
@@ -126,160 +390,290 @@ class App:
         self.current_chat_id: int | None = None
         self._all_chats: list[dict] = []
 
-        root.title("Lead Hunter — управление чатами (сервер)")
-        root.geometry("1000x620")
+        root.title("LEAD HUNTER")
+        root.configure(bg=C_BG)
+        root.geometry("1200x750")
+        root.minsize(900, 500)
 
+        self._setup_theme()
         self._build_ui()
         self._connect_to_server()
+
+    def _setup_theme(self):
+        """Настройка ttk стиля под брутализм."""
+        style = ttk.Style()
+        style.theme_use("clam")
+
+        # Treeview
+        style.configure("Treeview",
+                        background=C_BG,
+                        foreground=C_BLACK,
+                        fieldbackground=C_BG,
+                        bordercolor=C_BLACK,
+                        borderwidth=2,
+                        font=F_BODY,
+                        rowheight=28,
+                        selectbackground=C_BLACK,
+                        selectforeground=C_ACCENT)
+        style.configure("Treeview.Heading",
+                        background=C_BLACK,
+                        foreground="#FFFFFF",
+                        font=F_SMALL_BOLD,
+                        borderwidth=1,
+                        relief=tk.FLAT)
+        style.map("Treeview.Heading",
+                  background=[("active", C_ACCENT)])
+
+        # Scrollbar
+        style.configure("Vertical.TScrollbar",
+                        background=C_BLACK,
+                        troughcolor=C_GRAY,
+                        bordercolor=C_BLACK,
+                        arrowcolor="#FFFFFF")
+
+        # Combobox
+        style.configure("TCombobox",
+                        fieldbackground=C_BG,
+                        background=C_BLACK,
+                        foreground=C_BLACK,
+                        bordercolor=C_BLACK,
+                        borderwidth=2,
+                        arrowcolor=C_BLACK,
+                        padding=4)
+        style.map("TCombobox",
+                  fieldbackground=[("readonly", C_BG)],
+                  selectbackground=[("readonly", C_BLACK)],
+                  selectforeground=[("readonly", "#FFFFFF")])
+        style.configure("TCombobox.Field",
+                        fieldbackground=C_BG,
+                        background=C_BG,
+                        bordercolor=C_BLACK,
+                        borderwidth=1)
+        root = self.root
+        root.option_add("*TCombobox*Listbox.background", C_BG)
+        root.option_add("*TCombobox*Listbox.foreground", C_BLACK)
+        root.option_add("*TCombobox*Listbox.selectBackground", C_BLACK)
+        root.option_add("*TCombobox*Listbox.selectForeground", C_ACCENT)
+        root.option_add("*TCombobox*Listbox.font", F_BODY)
 
     # === UI ===
 
     def _build_ui(self):
-        main = ttk.Frame(self.root, padding=8)
-        main.pack(fill=tk.BOTH, expand=True)
+        # ── ШАПКА ──
+        header = tk.Frame(self.root, bg=C_BLACK, height=52)
+        header.pack(fill=tk.X)
+        header.pack_propagate(False)
 
-        # Левая часть: список чатов
-        left = ttk.Frame(main)
-        left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        tk.Label(header, text="LEAD HUNTER",
+                 font=F_TITLE, bg=C_BLACK, fg=C_ACCENT,
+                 anchor=tk.W).pack(side=tk.LEFT, padx=16, pady=10)
 
-        search_frame = ttk.Frame(left)
-        search_frame.pack(fill=tk.X, pady=(0, 4))
-        ttk.Label(search_frame, text="🔍 Поиск чата:").pack(side=tk.LEFT, padx=(0, 4))
+        tk.Label(header, text="control panel",
+                 font=F_SMALL, bg=C_BLACK, fg="#888888",
+                 anchor=tk.W).pack(side=tk.LEFT, pady=10)
+
+        # ── ОСНОВНАЯ ОБЛАСТЬ ──
+        body = tk.Frame(self.root, bg=C_BG)
+        body.pack(fill=tk.BOTH, expand=True)
+
+        # Левая колонка — список чатов
+        left = BFrame(body, bg=C_BG, border=False)
+        left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 0))
+
+        # Заголовок левой панели
+        left_header = tk.Frame(left, bg=C_BLACK, height=32)
+        left_header.pack(fill=tk.X)
+        left_header.pack_propagate(False)
+        tk.Label(left_header, text="  CHATS",
+                 font=F_HEADER, bg=C_BLACK, fg="#FFFFFF",
+                 anchor=tk.W).pack(side=tk.LEFT, pady=6)
+
+        # Поиск
+        search_frame = tk.Frame(left, bg=C_BG)
+        search_frame.pack(fill=tk.X, padx=8, pady=8)
+        BLabel(search_frame, text="SEARCH", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
+               bg=C_BG).pack(anchor=tk.W)
         self.search_var = tk.StringVar()
-        self.search_entry = ttk.Entry(search_frame, textvariable=self.search_var, width=30)
-        self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.search_entry = BEntry(search_frame, textvariable=self.search_var)
+        self.search_entry.pack(fill=tk.X, ipady=4)
         self.search_entry.bind("<KeyRelease>", self._filter_chats)
 
+        # Список чатов
+        tree_frame = tk.Frame(left, bg=C_BG)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+
         columns = ("read", "broadcast", "times")
-        self.tree = ttk.Treeview(left, columns=columns, show="tree headings",
+        self.tree = ttk.Treeview(tree_frame, columns=columns, show="tree headings",
                                  selectmode="browse")
-        self.tree.heading("#0", text="Чат")
-        self.tree.heading("read", text="Читать")
-        self.tree.heading("broadcast", text="Рассылка")
-        self.tree.heading("times", text="Время")
-        self.tree.column("#0", width=340, anchor=tk.W)
-        self.tree.column("read", width=70, anchor=tk.CENTER)
-        self.tree.column("broadcast", width=80, anchor=tk.CENTER)
-        self.tree.column("times", width=110, anchor=tk.CENTER)
+        self.tree.heading("#0", text="CHAT")
+        self.tree.heading("read", text="READ")
+        self.tree.heading("broadcast", text="BCAST")
+        self.tree.heading("times", text="TIME")
+        self.tree.column("#0", width=320, anchor=tk.W)
+        self.tree.column("read", width=60, anchor=tk.CENTER)
+        self.tree.column("broadcast", width=60, anchor=tk.CENTER)
+        self.tree.column("times", width=100, anchor=tk.CENTER)
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
 
-        scroll = ttk.Scrollbar(left, orient=tk.VERTICAL, command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scroll.set)
+        tree_scroll = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL,
+                                    command=self.tree.yview)
+        self.tree.configure(yscrollcommand=tree_scroll.set)
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scroll.pack(side=tk.LEFT, fill=tk.Y)
+        tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Правая часть: настройки выбранного чата
-        right = ttk.Frame(main, padding=(12, 0, 0, 0), width=380)
-        right.pack(side=tk.LEFT, fill=tk.BOTH)
-        right.pack_propagate(False)
+        # ── ПРАВАЯ КОЛОНКА — НАСТРОЙКИ (СКРОЛЛИТСЯ) ──
+        right_outer = tk.Frame(body, bg=C_BG, highlightbackground=C_BLACK,
+                               highlightthickness=BORDER_W)
+        right_outer.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
-        self.chat_title_var = tk.StringVar(value="Выберите чат слева")
-        ttk.Label(right, textvariable=self.chat_title_var,
-                  font=("", 11, "bold"), wraplength=360).pack(anchor=tk.W, pady=(0, 8))
+        # Заголовок правой панели
+        right_header = tk.Frame(right_outer, bg=C_BLACK, height=32)
+        right_header.pack(fill=tk.X)
+        right_header.pack_propagate(False)
+        tk.Label(right_header, text="  SETTINGS",
+                 font=F_HEADER, bg=C_BLACK, fg="#FFFFFF",
+                 anchor=tk.W).pack(side=tk.LEFT, pady=6)
 
+        # Скроллируемый контейнер
+        scroll_area = ScrollableFrame(right_outer, bg=C_BG)
+        scroll_area.pack(fill=tk.BOTH, expand=True)
+        right = scroll_area.scrollable
+
+        # Название чата
+        self.chat_title_var = tk.StringVar(value="Select a chat →")
+        tk.Label(right, textvariable=self.chat_title_var,
+                 font=F_HEADER, bg=C_BG, fg=C_BLACK,
+                 anchor=tk.W, wraplength=380).pack(fill=tk.X, padx=16, pady=(12, 4))
+
+        # Разделитель
+        tk.Frame(right, bg=C_BLACK, height=2).pack(fill=tk.X, padx=16, pady=(0, 12))
+
+        # Флажки
         self.read_var = tk.BooleanVar()
         self.bcast_var = tk.BooleanVar()
         self.direct_var = tk.BooleanVar()
-        ttk.Checkbutton(right, text="Читать (поиск лидов в этом чате)",
-                        variable=self.read_var).pack(anchor=tk.W)
-        ttk.Checkbutton(right, text="Рассылка (AI пишет рекламу в этот чат)",
-                        variable=self.bcast_var).pack(anchor=tk.W, pady=(2, 4))
-        ttk.Checkbutton(right, text="Прямая реклама (без правил — открыто предлагаю услуги)",
-                        variable=self.direct_var).pack(anchor=tk.W, pady=(2, 4))
+        BCheckbutton(right, text="READ — search for leads in this chat",
+                     variable=self.read_var).pack(anchor=tk.W, padx=16, pady=2)
+        BCheckbutton(right, text="BROADCAST — AI writes ads to this chat",
+                     variable=self.bcast_var).pack(anchor=tk.W, padx=16, pady=2)
+        BCheckbutton(right, text="DIRECT PROMO — openly offer services (no rules needed)",
+                     variable=self.direct_var).pack(anchor=tk.W, padx=16, pady=2)
 
-        # Пол разработчика — общая настройка, хранится на сервере
+        # Пол разработчика
+        tk.Frame(right, bg=C_BLACK, height=1).pack(fill=tk.X, padx=16, pady=12)
+        BLabel(right, text="DEVELOPER GENDER", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
+               bg=C_BG).pack(anchor=tk.W, padx=16, pady=(0, 4))
+        gender_frame = tk.Frame(right, bg=C_BG)
+        gender_frame.pack(anchor=tk.W, padx=16)
         self.gender_var = tk.StringVar(value="male")
-        gender_frame = ttk.Frame(right)
-        gender_frame.pack(anchor=tk.W, pady=(0, 8))
-        ttk.Label(gender_frame, text="Пол разработчика:").pack(side=tk.LEFT)
-        ttk.Radiobutton(gender_frame, text="Мужской", variable=self.gender_var,
-                        value="male", command=self.save_gender).pack(side=tk.LEFT, padx=(8, 4))
-        ttk.Radiobutton(gender_frame, text="Женский", variable=self.gender_var,
-                        value="female", command=self.save_gender).pack(side=tk.LEFT)
+        BRadiobutton(gender_frame, text="Male", variable=self.gender_var,
+                     value="male", command=self.save_gender).pack(side=tk.LEFT, padx=(0, 16))
+        BRadiobutton(gender_frame, text="Female", variable=self.gender_var,
+                     value="female", command=self.save_gender).pack(side=tk.LEFT)
 
-        ttk.Label(right, text="Тематика чата (необязательно — для точности AI-рассылок):").pack(
-            anchor=tk.W, pady=(8, 0))
+        # Тематика
+        tk.Frame(right, bg=C_BLACK, height=1).pack(fill=tk.X, padx=16, pady=12)
+        BLabel(right, text="CHAT NICHE", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
+               bg=C_BG).pack(anchor=tk.W, padx=16, pady=(0, 4))
         self.niche_var = tk.StringVar()
-        ttk.Entry(right, textvariable=self.niche_var, width=44).pack(anchor=tk.W, pady=(2, 4))
-        ttk.Label(right, text="Например: «рестораны и общепит», «недвижимость», «маркетплейсы». "
-                              "Если пусто — AI определит нишу по названию и сообщениям чата.",
-                  foreground="gray", wraplength=320).pack(anchor=tk.W, pady=(0, 4))
+        BEntry(right, textvariable=self.niche_var).pack(fill=tk.X, padx=16, ipady=4)
+        BLabel(right, text="e.g. «restaurants», «real estate», «crypto P2P». "
+                           "Empty = AI auto-detects from chat title & messages.",
+               font=F_SMALL, fg=C_GRAY_DARK, bg=C_BG,
+               wraplength=360).pack(anchor=tk.W, padx=16, pady=(4, 0))
 
-        lang_frame = ttk.Frame(right)
-        lang_frame.pack(fill=tk.X, pady=(0, 4))
-        ttk.Label(lang_frame, text="Язык рассылки:").pack(side=tk.LEFT)
+        # Язык
+        BLabel(right, text="BROADCAST LANGUAGE", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
+               bg=C_BG).pack(anchor=tk.W, padx=16, pady=(12, 4))
+        lang_frame = tk.Frame(right, bg=C_BG)
+        lang_frame.pack(fill=tk.X, padx=16)
         self.lang_var = tk.StringVar(value="ru")
         lang_codes = list(BROADCAST_LANGUAGES.keys())
         lang_values = [f"{code} — {BROADCAST_LANGUAGES[code]}" for code in lang_codes]
-        self.lang_combo = ttk.Combobox(lang_frame, textvariable=self.lang_var,
-                                       values=lang_values, state="readonly",
-                                       width=20)
-        self.lang_combo.pack(side=tk.LEFT, padx=(8, 0))
+        self.lang_combo = BCombobox(lang_frame, textvariable=self.lang_var,
+                                    values=lang_values, state="readonly")
+        self.lang_combo.pack(fill=tk.X, ipady=2)
         self.lang_combo.bind("<<ComboboxSelected>>", self._on_lang_select)
 
-        ttk.Label(right, text="Правила чата (вставьте текст правил вручную):").pack(anchor=tk.W)
-        self.rules_text = tk.Text(right, height=10, width=44, wrap=tk.WORD)
-        self.rules_text.pack(fill=tk.X, pady=(2, 4))
+        # Правила
+        tk.Frame(right, bg=C_BLACK, height=1).pack(fill=tk.X, padx=16, pady=12)
+        BLabel(right, text="CHAT RULES", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
+               bg=C_BG).pack(anchor=tk.W, padx=16, pady=(0, 4))
+        self.rules_text = BText(right, height=8, width=50, wrap=tk.WORD)
+        self.rules_text.pack(fill=tk.X, padx=16, pady=(0, 4))
 
         # Контекстное меню для копирования/вставки
-        self.context_menu = tk.Menu(self.root, tearoff=0)
-        self.context_menu.add_command(label="Копировать", command=self._copy_text)
-        self.context_menu.add_command(label="Вставить", command=self._paste_text)
-        self.context_menu.add_command(label="Вырезать", command=self._cut_text)
+        self.context_menu = tk.Menu(self.root, tearoff=0, bg=C_BG, fg=C_BLACK,
+                                    activebackground=C_BLACK,
+                                    activeforeground=C_ACCENT,
+                                    borderwidth=2)
+        self.context_menu.add_command(label="Copy", command=self._copy_text)
+        self.context_menu.add_command(label="Paste", command=self._paste_text)
+        self.context_menu.add_command(label="Cut", command=self._cut_text)
         self.context_menu.add_separator()
-        self.context_menu.add_command(label="Очистить", command=self._clear_text)
+        self.context_menu.add_command(label="Clear", command=self._clear_text)
 
         self.rules_text.bind("<Button-3>", self._show_context_menu)
         self.rules_text.bind("<Button-2>", self._show_context_menu)
 
         self.no_rules_var = tk.BooleanVar()
-        ttk.Checkbutton(right, text="Правил нет (я проверил — в чате нет правил)",
-                        variable=self.no_rules_var,
-                        command=self._toggle_no_rules).pack(anchor=tk.W)
+        BCheckbutton(right, text="NO RULES — I verified, chat has no rules",
+                     variable=self.no_rules_var,
+                     command=self._toggle_no_rules).pack(anchor=tk.W, padx=16, pady=4)
 
-        ttk.Label(right, text="Время рассылки (например: 10:00, 19:30):").pack(
-            anchor=tk.W, pady=(8, 0))
+        # Время рассылки
+        tk.Frame(right, bg=C_BLACK, height=1).pack(fill=tk.X, padx=16, pady=12)
+        BLabel(right, text="BROADCAST TIMES", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
+               bg=C_BG).pack(anchor=tk.W, padx=16, pady=(0, 4))
+        BLabel(right, text="Format: 10:00, 19:30", font=F_SMALL, fg=C_GRAY_DARK,
+               bg=C_BG).pack(anchor=tk.W, padx=16, pady=(0, 2))
         self.times_var = tk.StringVar()
-        ttk.Entry(right, textvariable=self.times_var, width=30).pack(anchor=tk.W, pady=(2, 12))
+        BEntry(right, textvariable=self.times_var).pack(fill=tk.X, padx=16, ipady=4)
 
-        btns = ttk.Frame(right)
-        btns.pack(fill=tk.X)
-        self.save_btn = ttk.Button(btns, text="💾 Сохранить", command=self.save_chat)
-        self.save_btn.pack(side=tk.LEFT)
-        self.test_btn = ttk.Button(btns, text="🧪 Тест: сгенерировать сообщение",
-                                   command=self.test_broadcast)
-        self.test_btn.pack(side=tk.LEFT, padx=(8, 0))
+        # Кнопки SAVE / TEST
+        tk.Frame(right, bg=C_BLACK, height=1).pack(fill=tk.X, padx=16, pady=12)
+        btns1 = tk.Frame(right, bg=C_BG)
+        btns1.pack(fill=tk.X, padx=16, pady=(8, 4))
+        self.save_btn = BButton(btns1, "SAVE", command=self.save_chat, style="primary")
+        self.save_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.test_btn = BButton(btns1, "TEST", command=self.test_broadcast, style="accent")
+        self.test_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 0))
 
-        self.sync_btn = ttk.Button(right, text="🔄 Обновить список чатов из Telegram",
-                                   command=self.sync_dialogs)
-        self.sync_btn.pack(anchor=tk.W, pady=(16, 0))
+        # SYNC / RELOAD
+        btns2 = tk.Frame(right, bg=C_BG)
+        btns2.pack(fill=tk.X, padx=16, pady=(0, 4))
+        self.sync_btn = BButton(btns2, "SYNC CHATS", command=self.sync_dialogs, style="ghost")
+        self.sync_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.reload_btn = BButton(btns2, "RELOAD", command=self.reload_chat_list, style="ghost")
+        self.reload_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 0))
 
-        self.reload_btn = ttk.Button(right, text="⟳ Перечитать данные с сервера",
-                                     command=self.reload_chat_list)
-        self.reload_btn.pack(anchor=tk.W, pady=(6, 0))
+        # Парсинг
+        tk.Frame(right, bg=C_BLACK, height=1).pack(fill=tk.X, padx=16, pady=12)
+        BLabel(right, text="PARSING CONTROL", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
+               bg=C_BG).pack(anchor=tk.W, padx=16, pady=(0, 4))
 
-        # Управление парсингом (обработкой сообщений и рассылками)
-        parse_frame = ttk.LabelFrame(right, text="Парсинг", padding=(8, 6))
-        parse_frame.pack(fill=tk.X, pady=(16, 0))
+        self.parse_state_var = tk.StringVar(value="... checking status")
+        tk.Label(right, textvariable=self.parse_state_var,
+                 font=F_STATUS, bg=C_BG, fg=C_BLACK,
+                 anchor=tk.W).pack(anchor=tk.W, padx=16, pady=(0, 6))
 
-        self.parse_state_var = tk.StringVar(value="⏳ состояние неизвестно")
-        ttk.Label(parse_frame, textvariable=self.parse_state_var,
-                  font=("", 9, "bold")).pack(anchor=tk.W, pady=(0, 6))
+        parse_btns = tk.Frame(right, bg=C_BG)
+        parse_btns.pack(fill=tk.X, padx=16, pady=(0, 16))
+        self.pause_btn = BButton(parse_btns, "PAUSE", command=self.pause_parsing,
+                                 style="danger")
+        self.pause_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.resume_btn = BButton(parse_btns, "RESUME", command=self.resume_parsing,
+                                  style="primary")
+        self.resume_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 0))
 
-        parse_btns = ttk.Frame(parse_frame)
-        parse_btns.pack(fill=tk.X)
-        self.pause_btn = ttk.Button(parse_btns, text="⏸ Остановить парсинг",
-                                    command=self.pause_parsing)
-        self.pause_btn.pack(side=tk.LEFT, expand=True, fill=tk.X)
-        self.resume_btn = ttk.Button(parse_btns, text="▶️ Запустить парсинг",
-                                     command=self.resume_parsing)
-        self.resume_btn.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(6, 0))
-
-        # Статус-бар
-        self.status_var = tk.StringVar(value=f"Подключение к серверу {SERVER_URL}...")
-        status = ttk.Label(self.root, textvariable=self.status_var,
-                           relief=tk.SUNKEN, anchor=tk.W, padding=(6, 2))
-        status.pack(side=tk.BOTTOM, fill=tk.X)
+        # ── СТАТУС-БАР ──
+        self.status_var = tk.StringVar(value=f"Connecting to {SERVER_URL}...")
+        status_bar = tk.Frame(self.root, bg=C_BLACK, height=28)
+        status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        status_bar.pack_propagate(False)
+        tk.Label(status_bar, textvariable=self.status_var,
+                 font=F_STATUS, bg=C_BLACK, fg="#FFFFFF",
+                 anchor=tk.W).pack(side=tk.LEFT, padx=12, pady=5)
 
         self._set_controls_enabled(False)
 
@@ -291,9 +685,9 @@ class App:
 
     def _toggle_no_rules(self):
         if self.no_rules_var.get():
-            self.rules_text.configure(state=tk.DISABLED, bg="#f0f0f0")
+            self.rules_text.configure(state=tk.DISABLED, bg=C_DISABLED)
         else:
-            self.rules_text.configure(state=tk.NORMAL, bg="white")
+            self.rules_text.configure(state=tk.NORMAL, bg=C_BG)
 
     def _show_context_menu(self, event):
         self.context_menu.post(event.x_root, event.y_root)
@@ -337,8 +731,8 @@ class App:
         selected = self.current_chat_id
         self.tree.delete(*self.tree.get_children())
         for c in chats:
-            read_mark = "✓" if c.get("is_monitored") else "–"
-            bcast_mark = "✓" if c.get("is_broadcast") else "–"
+            read_mark = "+" if c.get("is_monitored") else "-"
+            bcast_mark = "+" if c.get("is_broadcast") else "-"
             times = c.get("broadcast_times") or ""
             self.tree.insert("", tk.END, iid=str(c["chat_id"]),
                              text=c.get("chat_name") or str(c["chat_id"]),
@@ -370,7 +764,7 @@ class App:
                 err = Exception(
                     f"Сервер {SERVER_URL} не ответил вовремя.\n"
                     f"Попробуйте ещё раз через несколько секунд\n"
-                    f"(кнопка «⟳ Перечитать данные с сервера»).\n\nДетали: {e}"
+                    f"(кнопка RELOAD).\n\nДетали: {e}"
                 )
                 logger.error(f"Таймаут/обрыв связи: {e}")
                 self.root.after(0, lambda: (on_error or self._default_error)(err))
@@ -385,8 +779,8 @@ class App:
         threading.Thread(target=worker, daemon=True).start()
 
     def _default_error(self, e: Exception):
-        self.status_var.set("❌ Ошибка связи с сервером")
-        messagebox.showerror("Ошибка", str(e))
+        self.status_var.set("ERROR — server connection failed")
+        MessageDialog(self.root, "ERROR", str(e), style="error")
 
     def _connect_to_server(self):
         """Первое подключение: статус + настройки + список чатов."""
@@ -402,25 +796,22 @@ class App:
             self._apply_chats(chats)
             self._set_controls_enabled(True)
             self._apply_parse_state(status)
-            running = "✅ работает" if status.get("running") else "⚠️ Telegram-клиент остановлен"
-            logger.info(f"Подключено к серверу, чатов в списке: {len(chats)}")
+            running = "RUNNING" if status.get("running") else "STOPPED"
             self.status_var.set(
-                f"Сервер {SERVER_URL}: {running} | чатов отслеживается: "
-                f"{status.get('monitored_chats', 0)} | действий сегодня: "
+                f"{SERVER_URL} | {running} | chats: "
+                f"{status.get('monitored_chats', 0)} | actions today: "
                 f"{status.get('daily_actions', 0)}"
             )
 
         def err(e):
-            self.status_var.set(f"❌ Сервер {SERVER_URL} недоступен — нажмите «⟳ Перечитать данные с сервера»")
-            messagebox.showerror(
-                "Нет связи с сервером",
-                f"{e}\n\nПроверьте:\n"
-                f"• SERVER_URL и API_TOKEN в файле .env рядом с программой\n"
-                f"• что сервис lead-hunter запущен на сервере\n"
-                f"• интернет-соединение\n\n"
-                f"Потом нажмите «⟳ Перечитать данные с сервера»."
-            )
-            # Разрешаем повторить попытку кнопками
+            self.status_var.set(f"ERROR — {SERVER_URL} unreachable. Press RELOAD.")
+            MessageDialog(self.root, "Connection Error",
+                f"{e}\n\nCheck:\n"
+                f"  - SERVER_URL and API_TOKEN in .env file\n"
+                f"  - lead-hunter service is running on server\n"
+                f"  - internet connection\n\n"
+                f"Then press RELOAD.",
+                style="error")
             self._set_controls_enabled(True)
 
         self.run_bg(load, on_done=done, on_error=err)
@@ -434,7 +825,7 @@ class App:
             self._fill_tree(chats)
 
     def reload_chat_list(self):
-        self.status_var.set("⟳ Загрузка данных с сервера...")
+        self.status_var.set("RELOAD — fetching data from server...")
         def load():
             status = self.api.get_status()
             chats = self.api.get_chats()
@@ -444,7 +835,7 @@ class App:
             self._apply_chats(chats)
             self._set_controls_enabled(True)
             self._apply_parse_state(status)
-            self.status_var.set(f"✅ Данные загружены с сервера ({len(chats)} чатов)")
+            self.status_var.set(f"OK — {len(chats)} chats loaded")
         self.run_bg(load, on_done=done)
 
     def _on_select(self, _event):
@@ -463,7 +854,7 @@ class App:
 
         rules = chat.get("chat_rules") or ""
         self.no_rules_var.set(rules == NO_RULES_MARKER)
-        self.rules_text.configure(state=tk.NORMAL, bg="white")
+        self.rules_text.configure(state=tk.NORMAL, bg=C_BG)
         self.rules_text.delete("1.0", tk.END)
         if rules and rules != NO_RULES_MARKER:
             self.rules_text.insert("1.0", rules)
@@ -492,59 +883,59 @@ class App:
     def _apply_parse_state(self, status: dict):
         """Обновляет индикатор состояния парсинга по ответу /api/status."""
         if not status.get("running"):
-            self.parse_state_var.set("⚠️ Telegram-клиент остановлен")
+            self.parse_state_var.set("Telegram client STOPPED")
             self.pause_btn.configure(state="disabled")
             self.resume_btn.configure(state="disabled")
             return
         if status.get("paused"):
-            self.parse_state_var.set("⏸ Парсинг остановлен")
+            self.parse_state_var.set("PAUSED")
         else:
-            self.parse_state_var.set("▶️ Парсинг идёт")
-        # Кнопки уже включены через _set_controls_enabled
+            self.parse_state_var.set("RUNNING")
         self.pause_btn.configure(state="normal")
         self.resume_btn.configure(state="normal")
 
     def pause_parsing(self):
-        self.status_var.set("⏸ Останавливаю парсинг на сервере...")
+        self.status_var.set("PAUSE — stopping parsing on server...")
         self.pause_btn.configure(state="disabled")
 
         def done(result):
             self._apply_parse_state(result)
-            self.status_var.set("⏸ Парсинг остановлен — обработка сообщений и рассылки приостановлены")
+            self.status_var.set("PAUSED — parsing & broadcasts stopped")
 
         def err(e):
             self.pause_btn.configure(state="normal")
-            self.status_var.set("❌ Не удалось остановить парсинг")
-            messagebox.showerror("Ошибка", str(e))
+            self.status_var.set("ERROR — failed to pause")
+            MessageDialog(self.root, "Error", str(e), style="error")
 
         self.run_bg(self.api.pause_parsing, on_done=done, on_error=err)
 
     def resume_parsing(self):
-        self.status_var.set("▶️ Запускаю парсинг на сервере...")
+        self.status_var.set("RESUME — starting parsing on server...")
         self.resume_btn.configure(state="disabled")
 
         def done(result):
             self._apply_parse_state(result)
-            self.status_var.set("▶️ Парсинг запущен — обработка сообщений и рассылки возобновлены")
+            self.status_var.set("RUNNING — parsing & broadcasts active")
 
         def err(e):
             self.resume_btn.configure(state="normal")
-            self.status_var.set("❌ Не удалось запустить парсинг")
-            messagebox.showerror("Ошибка", str(e))
+            self.status_var.set("ERROR — failed to resume")
+            MessageDialog(self.root, "Error", str(e), style="error")
 
         self.run_bg(self.api.resume_parsing, on_done=done, on_error=err)
 
     def save_gender(self):
         gender = self.gender_var.get()
         def done(_):
-            label = "мужской" if gender == "male" else "женский"
-            self.status_var.set(f"💾 Пол разработчика сохранён на сервере: {label}")
+            label = "male" if gender == "male" else "female"
+            self.status_var.set(f"OK — developer gender saved: {label}")
         self.run_bg(lambda: self.api.set_settings({"developer_gender": gender}),
                     on_done=done)
 
     def save_chat(self):
         if not self.current_chat_id:
-            messagebox.showwarning("Нет выбора", "Сначала выберите чат в списке слева.")
+            MessageDialog(self.root, "Warning",
+                          "Select a chat from the list first.", style="warn")
             return
         chat_id = self.current_chat_id
 
@@ -557,27 +948,27 @@ class App:
         is_direct = self.direct_var.get()
         if self.bcast_var.get():
             if not times:
-                messagebox.showwarning(
-                    "Нет времени рассылки",
-                    "Включена рассылка, но не указано время.\n"
-                    "Впишите время в формате: 10:00, 19:30"
-                )
+                MessageDialog(self.root, "Warning",
+                    "Broadcast enabled but no time specified.\n"
+                    "Enter time in format: 10:00, 19:30",
+                    style="warn")
                 return
             if not TIMES_RE.match(times):
-                messagebox.showwarning(
-                    "Неверный формат времени",
-                    "Время должно быть в формате ЧЧ:ММ через запятую.\n"
-                    "Пример: 10:00, 19:30"
-                )
+                MessageDialog(self.root, "Warning",
+                    "Invalid time format.\n"
+                    "Use HH:MM separated by commas.\n"
+                    "Example: 10:00, 19:30",
+                    style="warn")
                 return
             if not is_direct and not rules:
-                messagebox.showwarning(
-                    "Нет правил чата",
-                    "Включена рассылка, но правила чата не заполнены.\n"
-                    "Вставьте правила чата или отметьте «Правил нет».\n"
-                    "Или включите «Прямая реклама» — тогда правила не нужны.\n"
-                    "Без этого рассылка отправляться НЕ будет (защита от бана)."
-                )
+                MessageDialog(self.root, "Warning",
+                    "Broadcast enabled but chat rules are empty.\n\n"
+                    "Options:\n"
+                    "  1. Paste chat rules into the rules field\n"
+                    "  2. Check 'NO RULES' if chat has no rules\n"
+                    "  3. Enable 'DIRECT PROMO' — rules not needed\n\n"
+                    "Without one of these, broadcast will NOT send (ban protection).",
+                    style="warn")
                 return
 
         chat_data = {
@@ -592,62 +983,74 @@ class App:
             "broadcast_language": self.lang_var.get().strip() or "ru",
         }
 
-        self.status_var.set("💾 Сохранение на сервере...")
+        self.status_var.set("SAVE — sending to server...")
         def done(success):
             if success:
-                self.status_var.set(f"💾 Сохранено на сервере: {self.chats[chat_id]['chat_name']}")
+                self.status_var.set(f"OK — saved: {self.chats[chat_id]['chat_name']}")
                 self.reload_chat_list()
             else:
-                messagebox.showerror("Ошибка", "Сервер не подтвердил сохранение.")
+                MessageDialog(self.root, "Error",
+                              "Server did not confirm save.", style="error")
 
         self.run_bg(lambda: self.api.update_chat(chat_data), on_done=done)
 
     def test_broadcast(self):
         if not self.current_chat_id:
-            messagebox.showwarning("Нет выбора", "Сначала выберите чат в списке слева.")
+            MessageDialog(self.root, "Warning",
+                          "Select a chat from the list first.", style="warn")
             return
         chat_id = self.current_chat_id
-        self.status_var.set("🧪 Генерация тестового сообщения на сервере (AI)...")
+        self.status_var.set("TEST — generating message on server (AI)...")
         self.test_btn.configure(state="disabled")
 
         def done(result):
             self.test_btn.configure(state="normal")
-            self.status_var.set("✅ Готово")
+            self.status_var.set("DONE")
             if result is None:
-                messagebox.showerror("Ошибка", "AI не смог сгенерировать сообщение.\n"
-                                               "Проверьте, что AI-провайдер на сервере доступен.")
+                MessageDialog(self.root, "Error",
+                    "AI could not generate a message.\n"
+                    "Check that the AI provider is available on the server.",
+                    style="error")
                 return
             if result.get("skip"):
-                messagebox.showinfo(
-                    "AI пропустил бы отправку",
-                    f"Сообщение НЕ было бы отправлено.\n\nПричина: {result.get('reason')}"
-                )
+                MessageDialog(self.root, "AI Skipped Send",
+                    f"Message would NOT be sent.\n\n"
+                    f"Reason:\n{result.get('reason', '')}\n\n"
+                    f"Niche: {result.get('chat_niche', '')}\n"
+                    f"Entry point: {result.get('entry_point', '')}",
+                    style="warn")
             else:
-                messagebox.showinfo(
-                    "Тестовое сообщение (НЕ отправлено)",
-                    f"AI сгенерировал такой текст:\n\n{result.get('message')}"
-                )
+                msg = result.get("message", "")
+                niche = result.get("chat_niche", "")
+                entry = result.get("entry_point", "")
+                MessageDialog(self.root, "Test Message (NOT sent)",
+                    f"AI generated this text:\n\n"
+                    f"{msg}\n\n"
+                    f"──────────────────────\n"
+                    f"Niche: {niche}\n"
+                    f"Entry point: {entry}",
+                    style="success")
 
         def err(e):
             self.test_btn.configure(state="normal")
-            self.status_var.set("❌ Ошибка генерации")
-            messagebox.showerror("Ошибка", str(e))
+            self.status_var.set("ERROR — generation failed")
+            MessageDialog(self.root, "Error", str(e), style="error")
 
         self.run_bg(lambda: self.api.preview_broadcast(chat_id), on_done=done, on_error=err)
 
     def sync_dialogs(self):
-        self.status_var.set("🔄 Сервер загружает список чатов из Telegram...")
+        self.status_var.set("SYNC — server loading chats from Telegram...")
         self.sync_btn.configure(state="disabled")
 
         def done(count):
             self.sync_btn.configure(state="normal")
-            self.status_var.set(f"✅ Загружено чатов: {count}")
+            self.status_var.set(f"OK — {count} chats loaded")
             self.reload_chat_list()
 
         def err(e):
             self.sync_btn.configure(state="normal")
-            self.status_var.set("❌ Ошибка загрузки чатов")
-            messagebox.showerror("Ошибка", str(e))
+            self.status_var.set("ERROR — sync failed")
+            MessageDialog(self.root, "Error", str(e), style="error")
 
         self.run_bg(self.api.sync_dialogs, on_done=done, on_error=err)
 
@@ -660,13 +1063,12 @@ def main():
 
     if not SERVER_URL:
         root.withdraw()
-        messagebox.showerror(
-            "Ошибка конфигурации",
-            "Не настроен адрес сервера.\n\n"
-            "Создайте файл .env рядом с программой и укажите:\n\n"
+        MessageDialog(root, "Configuration Error",
+            "Server address not configured.\n\n"
+            "Create a .env file next to the program and specify:\n\n"
             "SERVER_URL=http://82.202.170.14:8080\n"
-            "API_TOKEN=<токен с сервера>"
-        )
+            "API_TOKEN=<token from server>",
+            style="error")
         return
 
     App(root, ServerAPI(SERVER_URL, API_TOKEN))
@@ -682,7 +1084,7 @@ if __name__ == "__main__":
         try:
             root = tk.Tk()
             root.withdraw()
-            messagebox.showerror("Фатальная ошибка", str(e))
+            MessageDialog(root, "Fatal Error", str(e), style="error")
         except Exception:
             pass
-        input("Нажмите Enter для выхода...")
+        input("Press Enter to exit...")
