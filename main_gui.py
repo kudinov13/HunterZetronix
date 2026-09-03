@@ -265,13 +265,13 @@ class MessageDialog(tk.Toplevel):
 
         # Шапка
         if style == "error":
-            header_bg, header_fg, header_text = C_RED, "#FFFFFF", "ERROR"
+            header_bg, header_fg, header_text = C_RED, "#FFFFFF", "ОШИБКА"
         elif style == "warn":
-            header_bg, header_fg, header_text = C_YELLOW, C_BLACK, "WARNING"
+            header_bg, header_fg, header_text = C_YELLOW, C_BLACK, "ПРЕДУПРЕЖДЕНИЕ"
         elif style == "success":
-            header_bg, header_fg, header_text = C_GREEN, "#FFFFFF", "RESULT"
+            header_bg, header_fg, header_text = C_GREEN, "#FFFFFF", "РЕЗУЛЬТАТ"
         else:
-            header_bg, header_fg, header_text = C_BLACK, "#FFFFFF", "INFO"
+            header_bg, header_fg, header_text = C_BLACK, "#FFFFFF", "ИНФО"
 
         header = tk.Frame(self, bg=header_bg, height=36)
         header.pack(fill=tk.X)
@@ -294,9 +294,9 @@ class MessageDialog(tk.Toplevel):
         btn_frame = tk.Frame(self, bg=C_BG)
         btn_frame.pack(fill=tk.X, padx=8, pady=(0, 8))
 
-        BButton(btn_frame, "COPY", command=lambda: self._copy(text),
+        BButton(btn_frame, "КОПИРОВАТЬ", command=lambda: self._copy(text),
                 style="accent").pack(side=tk.LEFT)
-        BButton(btn_frame, "CLOSE", command=self.destroy,
+        BButton(btn_frame, "ЗАКРЫТЬ", command=self.destroy,
                 style="primary").pack(side=tk.RIGHT)
 
         # Enter / Esc закрывают
@@ -468,7 +468,7 @@ class App:
                  font=F_TITLE, bg=C_BLACK, fg=C_ACCENT,
                  anchor=tk.W).pack(side=tk.LEFT, padx=16, pady=10)
 
-        tk.Label(header, text="control panel",
+        tk.Label(header, text="панель управления",
                  font=F_SMALL, bg=C_BLACK, fg="#888888",
                  anchor=tk.W).pack(side=tk.LEFT, pady=10)
 
@@ -484,14 +484,14 @@ class App:
         left_header = tk.Frame(left, bg=C_BLACK, height=32)
         left_header.pack(fill=tk.X)
         left_header.pack_propagate(False)
-        tk.Label(left_header, text="  CHATS",
+        tk.Label(left_header, text="  ЧАТЫ",
                  font=F_HEADER, bg=C_BLACK, fg="#FFFFFF",
                  anchor=tk.W).pack(side=tk.LEFT, pady=6)
 
         # Поиск
         search_frame = tk.Frame(left, bg=C_BG)
         search_frame.pack(fill=tk.X, padx=8, pady=8)
-        BLabel(search_frame, text="SEARCH", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
+        BLabel(search_frame, text="ПОИСК", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
                bg=C_BG).pack(anchor=tk.W)
         self.search_var = tk.StringVar()
         self.search_entry = BEntry(search_frame, textvariable=self.search_var)
@@ -505,10 +505,10 @@ class App:
         columns = ("read", "broadcast", "times")
         self.tree = ttk.Treeview(tree_frame, columns=columns, show="tree headings",
                                  selectmode="browse")
-        self.tree.heading("#0", text="CHAT")
-        self.tree.heading("read", text="READ")
-        self.tree.heading("broadcast", text="BCAST")
-        self.tree.heading("times", text="TIME")
+        self.tree.heading("#0", text="ЧАТ")
+        self.tree.heading("read", text="ЧИТ.")
+        self.tree.heading("broadcast", text="РАСС.")
+        self.tree.heading("times", text="ВРЕМЯ")
         self.tree.column("#0", width=320, anchor=tk.W)
         self.tree.column("read", width=60, anchor=tk.CENTER)
         self.tree.column("broadcast", width=60, anchor=tk.CENTER)
@@ -530,7 +530,7 @@ class App:
         right_header = tk.Frame(right_outer, bg=C_BLACK, height=32)
         right_header.pack(fill=tk.X)
         right_header.pack_propagate(False)
-        tk.Label(right_header, text="  SETTINGS",
+        tk.Label(right_header, text="  НАСТРОЙКИ",
                  font=F_HEADER, bg=C_BLACK, fg="#FFFFFF",
                  anchor=tk.W).pack(side=tk.LEFT, pady=6)
 
@@ -540,7 +540,7 @@ class App:
         right = scroll_area.scrollable
 
         # Название чата
-        self.chat_title_var = tk.StringVar(value="Select a chat →")
+        self.chat_title_var = tk.StringVar(value="Выберите чат →")
         tk.Label(right, textvariable=self.chat_title_var,
                  font=F_HEADER, bg=C_BG, fg=C_BLACK,
                  anchor=tk.W, wraplength=380).pack(fill=tk.X, padx=16, pady=(12, 4))
@@ -552,38 +552,38 @@ class App:
         self.read_var = tk.BooleanVar()
         self.bcast_var = tk.BooleanVar()
         self.direct_var = tk.BooleanVar()
-        BCheckbutton(right, text="READ — search for leads in this chat",
+        BCheckbutton(right, text="ЧИТАТЬ — искать лидов в этом чате",
                      variable=self.read_var).pack(anchor=tk.W, padx=16, pady=2)
-        BCheckbutton(right, text="BROADCAST — AI writes ads to this chat",
+        BCheckbutton(right, text="РАССЫЛКА — AI пишет рекламу в этот чат",
                      variable=self.bcast_var).pack(anchor=tk.W, padx=16, pady=2)
-        BCheckbutton(right, text="DIRECT PROMO — openly offer services (no rules needed)",
+        BCheckbutton(right, text="ПРЯМАЯ РЕКЛАМА — открыто предлагаю услуги (без правил)",
                      variable=self.direct_var).pack(anchor=tk.W, padx=16, pady=2)
 
         # Пол разработчика
         tk.Frame(right, bg=C_BLACK, height=1).pack(fill=tk.X, padx=16, pady=12)
-        BLabel(right, text="DEVELOPER GENDER", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
+        BLabel(right, text="ПОЛ РАЗРАБОТЧИКА", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
                bg=C_BG).pack(anchor=tk.W, padx=16, pady=(0, 4))
         gender_frame = tk.Frame(right, bg=C_BG)
         gender_frame.pack(anchor=tk.W, padx=16)
         self.gender_var = tk.StringVar(value="male")
-        BRadiobutton(gender_frame, text="Male", variable=self.gender_var,
+        BRadiobutton(gender_frame, text="Мужской", variable=self.gender_var,
                      value="male", command=self.save_gender).pack(side=tk.LEFT, padx=(0, 16))
-        BRadiobutton(gender_frame, text="Female", variable=self.gender_var,
+        BRadiobutton(gender_frame, text="Женский", variable=self.gender_var,
                      value="female", command=self.save_gender).pack(side=tk.LEFT)
 
         # Тематика
         tk.Frame(right, bg=C_BLACK, height=1).pack(fill=tk.X, padx=16, pady=12)
-        BLabel(right, text="CHAT NICHE", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
+        BLabel(right, text="ТЕМАТИКА ЧАТА", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
                bg=C_BG).pack(anchor=tk.W, padx=16, pady=(0, 4))
         self.niche_var = tk.StringVar()
         BEntry(right, textvariable=self.niche_var).pack(fill=tk.X, padx=16, ipady=4)
-        BLabel(right, text="e.g. «restaurants», «real estate», «crypto P2P». "
-                           "Empty = AI auto-detects from chat title & messages.",
+        BLabel(right, text="Например: «рестораны», «недвижимость», «крипта P2P». "
+                           "Пусто — AI определит по названию и сообщениям чата.",
                font=F_SMALL, fg=C_GRAY_DARK, bg=C_BG,
                wraplength=360).pack(anchor=tk.W, padx=16, pady=(4, 0))
 
         # Язык
-        BLabel(right, text="BROADCAST LANGUAGE", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
+        BLabel(right, text="ЯЗЫК РАССЫЛКИ", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
                bg=C_BG).pack(anchor=tk.W, padx=16, pady=(12, 4))
         lang_frame = tk.Frame(right, bg=C_BG)
         lang_frame.pack(fill=tk.X, padx=16)
@@ -597,7 +597,7 @@ class App:
 
         # Правила
         tk.Frame(right, bg=C_BLACK, height=1).pack(fill=tk.X, padx=16, pady=12)
-        BLabel(right, text="CHAT RULES", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
+        BLabel(right, text="ПРАВИЛА ЧАТА", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
                bg=C_BG).pack(anchor=tk.W, padx=16, pady=(0, 4))
         self.rules_text = BText(right, height=8, width=50, wrap=tk.WORD)
         self.rules_text.pack(fill=tk.X, padx=16, pady=(0, 4))
@@ -607,25 +607,25 @@ class App:
                                     activebackground=C_BLACK,
                                     activeforeground=C_ACCENT,
                                     borderwidth=2)
-        self.context_menu.add_command(label="Copy", command=self._copy_text)
-        self.context_menu.add_command(label="Paste", command=self._paste_text)
-        self.context_menu.add_command(label="Cut", command=self._cut_text)
+        self.context_menu.add_command(label="Копировать", command=self._copy_text)
+        self.context_menu.add_command(label="Вставить", command=self._paste_text)
+        self.context_menu.add_command(label="Вырезать", command=self._cut_text)
         self.context_menu.add_separator()
-        self.context_menu.add_command(label="Clear", command=self._clear_text)
+        self.context_menu.add_command(label="Очистить", command=self._clear_text)
 
         self.rules_text.bind("<Button-3>", self._show_context_menu)
         self.rules_text.bind("<Button-2>", self._show_context_menu)
 
         self.no_rules_var = tk.BooleanVar()
-        BCheckbutton(right, text="NO RULES — I verified, chat has no rules",
+        BCheckbutton(right, text="ПРАВИЛ НЕТ — я проверил, в чате нет правил",
                      variable=self.no_rules_var,
                      command=self._toggle_no_rules).pack(anchor=tk.W, padx=16, pady=4)
 
         # Время рассылки
         tk.Frame(right, bg=C_BLACK, height=1).pack(fill=tk.X, padx=16, pady=12)
-        BLabel(right, text="BROADCAST TIMES", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
+        BLabel(right, text="ВРЕМЯ РАССЫЛКИ", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
                bg=C_BG).pack(anchor=tk.W, padx=16, pady=(0, 4))
-        BLabel(right, text="Format: 10:00, 19:30", font=F_SMALL, fg=C_GRAY_DARK,
+        BLabel(right, text="Формат: 10:00, 19:30", font=F_SMALL, fg=C_GRAY_DARK,
                bg=C_BG).pack(anchor=tk.W, padx=16, pady=(0, 2))
         self.times_var = tk.StringVar()
         BEntry(right, textvariable=self.times_var).pack(fill=tk.X, padx=16, ipady=4)
@@ -634,40 +634,40 @@ class App:
         tk.Frame(right, bg=C_BLACK, height=1).pack(fill=tk.X, padx=16, pady=12)
         btns1 = tk.Frame(right, bg=C_BG)
         btns1.pack(fill=tk.X, padx=16, pady=(8, 4))
-        self.save_btn = BButton(btns1, "SAVE", command=self.save_chat, style="primary")
+        self.save_btn = BButton(btns1, "СОХРАНИТЬ", command=self.save_chat, style="primary")
         self.save_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.test_btn = BButton(btns1, "TEST", command=self.test_broadcast, style="accent")
+        self.test_btn = BButton(btns1, "ТЕСТ", command=self.test_broadcast, style="accent")
         self.test_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 0))
 
         # SYNC / RELOAD
         btns2 = tk.Frame(right, bg=C_BG)
         btns2.pack(fill=tk.X, padx=16, pady=(0, 4))
-        self.sync_btn = BButton(btns2, "SYNC CHATS", command=self.sync_dialogs, style="ghost")
+        self.sync_btn = BButton(btns2, "СИНХРОН", command=self.sync_dialogs, style="ghost")
         self.sync_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.reload_btn = BButton(btns2, "RELOAD", command=self.reload_chat_list, style="ghost")
+        self.reload_btn = BButton(btns2, "ОБНОВИТЬ", command=self.reload_chat_list, style="ghost")
         self.reload_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 0))
 
         # Парсинг
         tk.Frame(right, bg=C_BLACK, height=1).pack(fill=tk.X, padx=16, pady=12)
-        BLabel(right, text="PARSING CONTROL", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
+        BLabel(right, text="УПРАВЛЕНИЕ ПАРСИНГОМ", font=F_SMALL_BOLD, fg=C_GRAY_DARK,
                bg=C_BG).pack(anchor=tk.W, padx=16, pady=(0, 4))
 
-        self.parse_state_var = tk.StringVar(value="... checking status")
+        self.parse_state_var = tk.StringVar(value="... проверка статуса")
         tk.Label(right, textvariable=self.parse_state_var,
                  font=F_STATUS, bg=C_BG, fg=C_BLACK,
                  anchor=tk.W).pack(anchor=tk.W, padx=16, pady=(0, 6))
 
         parse_btns = tk.Frame(right, bg=C_BG)
         parse_btns.pack(fill=tk.X, padx=16, pady=(0, 16))
-        self.pause_btn = BButton(parse_btns, "PAUSE", command=self.pause_parsing,
+        self.pause_btn = BButton(parse_btns, "СТОП", command=self.pause_parsing,
                                  style="danger")
         self.pause_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.resume_btn = BButton(parse_btns, "RESUME", command=self.resume_parsing,
+        self.resume_btn = BButton(parse_btns, "ЗАПУСК", command=self.resume_parsing,
                                   style="primary")
         self.resume_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 0))
 
         # ── СТАТУС-БАР ──
-        self.status_var = tk.StringVar(value=f"Connecting to {SERVER_URL}...")
+        self.status_var = tk.StringVar(value=f"Подключение к {SERVER_URL}...")
         status_bar = tk.Frame(self.root, bg=C_BLACK, height=28)
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
         status_bar.pack_propagate(False)
@@ -779,8 +779,8 @@ class App:
         threading.Thread(target=worker, daemon=True).start()
 
     def _default_error(self, e: Exception):
-        self.status_var.set("ERROR — server connection failed")
-        MessageDialog(self.root, "ERROR", str(e), style="error")
+        self.status_var.set("ОШИБКА — нет связи с сервером")
+        MessageDialog(self.root, "Ошибка", str(e), style="error")
 
     def _connect_to_server(self):
         """Первое подключение: статус + настройки + список чатов."""
@@ -796,21 +796,21 @@ class App:
             self._apply_chats(chats)
             self._set_controls_enabled(True)
             self._apply_parse_state(status)
-            running = "RUNNING" if status.get("running") else "STOPPED"
+            running = "РАБОТАЕТ" if status.get("running") else "ОСТАНОВЛЕН"
             self.status_var.set(
-                f"{SERVER_URL} | {running} | chats: "
-                f"{status.get('monitored_chats', 0)} | actions today: "
+                f"{SERVER_URL} | {running} | чатов: "
+                f"{status.get('monitored_chats', 0)} | действий сегодня: "
                 f"{status.get('daily_actions', 0)}"
             )
 
         def err(e):
-            self.status_var.set(f"ERROR — {SERVER_URL} unreachable. Press RELOAD.")
-            MessageDialog(self.root, "Connection Error",
-                f"{e}\n\nCheck:\n"
-                f"  - SERVER_URL and API_TOKEN in .env file\n"
-                f"  - lead-hunter service is running on server\n"
-                f"  - internet connection\n\n"
-                f"Then press RELOAD.",
+            self.status_var.set(f"ОШИБКА — {SERVER_URL} недоступен. Нажмите ОБНОВИТЬ.")
+            MessageDialog(self.root, "Ошибка соединения",
+                f"{e}\n\nПроверьте:\n"
+                f"  - SERVER_URL и API_TOKEN в файле .env\n"
+                f"  - сервис lead-hunter запущен на сервере\n"
+                f"  - интернет-соединение\n\n"
+                f"Затем нажмите ОБНОВИТЬ.",
                 style="error")
             self._set_controls_enabled(True)
 
@@ -825,7 +825,7 @@ class App:
             self._fill_tree(chats)
 
     def reload_chat_list(self):
-        self.status_var.set("RELOAD — fetching data from server...")
+        self.status_var.set("ОБНОВЛЕНИЕ — загрузка данных с сервера...")
         def load():
             status = self.api.get_status()
             chats = self.api.get_chats()
@@ -835,7 +835,7 @@ class App:
             self._apply_chats(chats)
             self._set_controls_enabled(True)
             self._apply_parse_state(status)
-            self.status_var.set(f"OK — {len(chats)} chats loaded")
+            self.status_var.set(f"OK — загружено чатов: {len(chats)}")
         self.run_bg(load, on_done=done)
 
     def _on_select(self, _event):
@@ -883,59 +883,59 @@ class App:
     def _apply_parse_state(self, status: dict):
         """Обновляет индикатор состояния парсинга по ответу /api/status."""
         if not status.get("running"):
-            self.parse_state_var.set("Telegram client STOPPED")
+            self.parse_state_var.set("Telegram-клиент ОСТАНОВЛЕН")
             self.pause_btn.configure(state="disabled")
             self.resume_btn.configure(state="disabled")
             return
         if status.get("paused"):
-            self.parse_state_var.set("PAUSED")
+            self.parse_state_var.set("ПАУЗУА")
         else:
-            self.parse_state_var.set("RUNNING")
+            self.parse_state_var.set("РАБОТАЕТ")
         self.pause_btn.configure(state="normal")
         self.resume_btn.configure(state="normal")
 
     def pause_parsing(self):
-        self.status_var.set("PAUSE — stopping parsing on server...")
+        self.status_var.set("ОСТАНОВКА — останавливаю парсинг на сервере...")
         self.pause_btn.configure(state="disabled")
 
         def done(result):
             self._apply_parse_state(result)
-            self.status_var.set("PAUSED — parsing & broadcasts stopped")
+            self.status_var.set("ПАУЗА — парсинг и рассылки остановлены")
 
         def err(e):
             self.pause_btn.configure(state="normal")
-            self.status_var.set("ERROR — failed to pause")
-            MessageDialog(self.root, "Error", str(e), style="error")
+            self.status_var.set("ОШИБКА — не удалось остановить")
+            MessageDialog(self.root, "Ошибка", str(e), style="error")
 
         self.run_bg(self.api.pause_parsing, on_done=done, on_error=err)
 
     def resume_parsing(self):
-        self.status_var.set("RESUME — starting parsing on server...")
+        self.status_var.set("ЗАПУСК — запускаю парсинг на сервере...")
         self.resume_btn.configure(state="disabled")
 
         def done(result):
             self._apply_parse_state(result)
-            self.status_var.set("RUNNING — parsing & broadcasts active")
+            self.status_var.set("РАБОТАЕТ — парсинг и рассылки активны")
 
         def err(e):
             self.resume_btn.configure(state="normal")
-            self.status_var.set("ERROR — failed to resume")
-            MessageDialog(self.root, "Error", str(e), style="error")
+            self.status_var.set("ОШИБКА — не удалось запустить")
+            MessageDialog(self.root, "Ошибка", str(e), style="error")
 
         self.run_bg(self.api.resume_parsing, on_done=done, on_error=err)
 
     def save_gender(self):
         gender = self.gender_var.get()
         def done(_):
-            label = "male" if gender == "male" else "female"
-            self.status_var.set(f"OK — developer gender saved: {label}")
+            label = "мужской" if gender == "male" else "женский"
+            self.status_var.set(f"OK — пол разработчика сохранён: {label}")
         self.run_bg(lambda: self.api.set_settings({"developer_gender": gender}),
                     on_done=done)
 
     def save_chat(self):
         if not self.current_chat_id:
-            MessageDialog(self.root, "Warning",
-                          "Select a chat from the list first.", style="warn")
+            MessageDialog(self.root, "Предупреждение",
+                          "Сначала выберите чат из списка слева.", style="warn")
             return
         chat_id = self.current_chat_id
 
@@ -948,26 +948,26 @@ class App:
         is_direct = self.direct_var.get()
         if self.bcast_var.get():
             if not times:
-                MessageDialog(self.root, "Warning",
-                    "Broadcast enabled but no time specified.\n"
-                    "Enter time in format: 10:00, 19:30",
+                MessageDialog(self.root, "Предупреждение",
+                    "Рассылка включена, но не указано время.\n"
+                    "Введите время в формате: 10:00, 19:30",
                     style="warn")
                 return
             if not TIMES_RE.match(times):
-                MessageDialog(self.root, "Warning",
-                    "Invalid time format.\n"
-                    "Use HH:MM separated by commas.\n"
-                    "Example: 10:00, 19:30",
+                MessageDialog(self.root, "Предупреждение",
+                    "Неверный формат времени.\n"
+                    "Используйте ЧЧ:ММ через запятую.\n"
+                    "Пример: 10:00, 19:30",
                     style="warn")
                 return
             if not is_direct and not rules:
-                MessageDialog(self.root, "Warning",
-                    "Broadcast enabled but chat rules are empty.\n\n"
-                    "Options:\n"
-                    "  1. Paste chat rules into the rules field\n"
-                    "  2. Check 'NO RULES' if chat has no rules\n"
-                    "  3. Enable 'DIRECT PROMO' — rules not needed\n\n"
-                    "Without one of these, broadcast will NOT send (ban protection).",
+                MessageDialog(self.root, "Предупреждение",
+                    "Рассылка включена, но правила чата не заполнены.\n\n"
+                    "Варианты:\n"
+                    "  1. Вставьте правила чата в поле правил\n"
+                    "  2. Отметьте «ПРАВИЛ НЕТ» — если в чате нет правил\n"
+                    "  3. Включите «ПРЯМАЯ РЕКЛАМА» — правила не нужны\n\n"
+                    "Без одного из этих рассылка НЕ будет отправляться (защита от бана).",
                     style="warn")
                 return
 
@@ -983,74 +983,74 @@ class App:
             "broadcast_language": self.lang_var.get().strip() or "ru",
         }
 
-        self.status_var.set("SAVE — sending to server...")
+        self.status_var.set("СОХРАНЕНИЕ — отправка на сервер...")
         def done(success):
             if success:
-                self.status_var.set(f"OK — saved: {self.chats[chat_id]['chat_name']}")
+                self.status_var.set(f"OK — сохранено: {self.chats[chat_id]['chat_name']}")
                 self.reload_chat_list()
             else:
-                MessageDialog(self.root, "Error",
-                              "Server did not confirm save.", style="error")
+                MessageDialog(self.root, "Ошибка",
+                              "Сервер не подтвердил сохранение.", style="error")
 
         self.run_bg(lambda: self.api.update_chat(chat_data), on_done=done)
 
     def test_broadcast(self):
         if not self.current_chat_id:
-            MessageDialog(self.root, "Warning",
-                          "Select a chat from the list first.", style="warn")
+            MessageDialog(self.root, "Предупреждение",
+                          "Сначала выберите чат из списка слева.", style="warn")
             return
         chat_id = self.current_chat_id
-        self.status_var.set("TEST — generating message on server (AI)...")
+        self.status_var.set("ТЕСТ — генерация сообщения на сервере (AI)...")
         self.test_btn.configure(state="disabled")
 
         def done(result):
             self.test_btn.configure(state="normal")
-            self.status_var.set("DONE")
+            self.status_var.set("ГОТОВО")
             if result is None:
-                MessageDialog(self.root, "Error",
-                    "AI could not generate a message.\n"
-                    "Check that the AI provider is available on the server.",
+                MessageDialog(self.root, "Ошибка",
+                    "AI не смог сгенерировать сообщение.\n"
+                    "Проверьте, что AI-провайдер доступен на сервере.",
                     style="error")
                 return
             if result.get("skip"):
-                MessageDialog(self.root, "AI Skipped Send",
-                    f"Message would NOT be sent.\n\n"
-                    f"Reason:\n{result.get('reason', '')}\n\n"
-                    f"Niche: {result.get('chat_niche', '')}\n"
-                    f"Entry point: {result.get('entry_point', '')}",
+                MessageDialog(self.root, "AI пропустил бы отправку",
+                    f"Сообщение НЕ было бы отправлено.\n\n"
+                    f"Причина:\n{result.get('reason', '')}\n\n"
+                    f"Ниша: {result.get('chat_niche', '')}\n"
+                    f"Точка входа: {result.get('entry_point', '')}",
                     style="warn")
             else:
                 msg = result.get("message", "")
                 niche = result.get("chat_niche", "")
                 entry = result.get("entry_point", "")
-                MessageDialog(self.root, "Test Message (NOT sent)",
-                    f"AI generated this text:\n\n"
+                MessageDialog(self.root, "Тестовое сообщение (НЕ отправлено)",
+                    f"AI сгенерировал такой текст:\n\n"
                     f"{msg}\n\n"
                     f"──────────────────────\n"
-                    f"Niche: {niche}\n"
-                    f"Entry point: {entry}",
+                    f"Ниша: {niche}\n"
+                    f"Точка входа: {entry}",
                     style="success")
 
         def err(e):
             self.test_btn.configure(state="normal")
-            self.status_var.set("ERROR — generation failed")
-            MessageDialog(self.root, "Error", str(e), style="error")
+            self.status_var.set("ОШИБКА — генерация не удалась")
+            MessageDialog(self.root, "Ошибка", str(e), style="error")
 
         self.run_bg(lambda: self.api.preview_broadcast(chat_id), on_done=done, on_error=err)
 
     def sync_dialogs(self):
-        self.status_var.set("SYNC — server loading chats from Telegram...")
+        self.status_var.set("СИНХРОНИЗАЦИЯ — сервер загружает чаты из Telegram...")
         self.sync_btn.configure(state="disabled")
 
         def done(count):
             self.sync_btn.configure(state="normal")
-            self.status_var.set(f"OK — {count} chats loaded")
+            self.status_var.set(f"OK — загружено чатов: {count}")
             self.reload_chat_list()
 
         def err(e):
             self.sync_btn.configure(state="normal")
-            self.status_var.set("ERROR — sync failed")
-            MessageDialog(self.root, "Error", str(e), style="error")
+            self.status_var.set("ОШИБКА — синхронизация не удалась")
+            MessageDialog(self.root, "Ошибка", str(e), style="error")
 
         self.run_bg(self.api.sync_dialogs, on_done=done, on_error=err)
 
@@ -1063,11 +1063,11 @@ def main():
 
     if not SERVER_URL:
         root.withdraw()
-        MessageDialog(root, "Configuration Error",
-            "Server address not configured.\n\n"
-            "Create a .env file next to the program and specify:\n\n"
+        MessageDialog(root, "Ошибка конфигурации",
+            "Не настроен адрес сервера.\n\n"
+            "Создайте файл .env рядом с программой и укажите:\n\n"
             "SERVER_URL=http://82.202.170.14:8080\n"
-            "API_TOKEN=<token from server>",
+            "API_TOKEN=<токен с сервера>",
             style="error")
         return
 
@@ -1084,7 +1084,7 @@ if __name__ == "__main__":
         try:
             root = tk.Tk()
             root.withdraw()
-            MessageDialog(root, "Fatal Error", str(e), style="error")
+            MessageDialog(root, "Фатальная ошибка", str(e), style="error")
         except Exception:
             pass
-        input("Press Enter to exit...")
+        input("Нажмите Enter для выхода...")
