@@ -172,17 +172,33 @@ async def _mymemory_translate(text: str, from_lang: str, to_lang: str) -> str | 
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read().decode("utf-8"))
 
-        if data.get("responseStatus") == 200 or data.get("responseData"):
-            translated = data.get("responseData", {}).get("translatedText")
-            if translated and translated.upper() != text.upper():
-                return translated
+        # Проверяем статус ответа
+        status = data.get("responseStatus")
+        translated = data.get("responseData", {}).get("translatedText", "")
+
+        # MyMemory возвращает текст ошибки как "перевод" — фильтруем
+        error_markers = (
+            "INVALID SOURCE LANGUAGE",
+            "INVALID TARGET LANGUAGE",
+            "IS AN INVALID",
+            "PLEASE SELECT TWO DISTINCT",
+            "COULD NOT TRANSLATE",
+        )
+        if any(marker in (translated or "").upper() for marker in error_markers):
+            logger.warning(f"MyMemory: ошибка языка {src}->{dst}: {translated[:100]}")
+            return None
+
+        if status == 200 and translated and translated.upper() != text.upper():
+            return translated
 
         # Иногда MyMemory возвращает перевод в matches
         matches = data.get("matches", [])
         if matches:
             best = matches[0].get("translation")
-            if best:
-                return best
+            if best and best.upper() != text.upper():
+                # Проверяем что это не сообщение об ошибке
+                if not any(marker in best.upper() for marker in error_markers):
+                    return best
 
         logger.warning(f"MyMemory: нет перевода для {src}->{dst}")
         return None
@@ -253,12 +269,14 @@ async def translate(text: str, from_lang: str, to_lang: str,
     # Делим длинный текст на части (MyMemory лимит ~500 символов)
     if len(text) <= 500:
         result = await _mymemory_translate(text, from_lang, to_lang)
-        if result:
+        if result and _is_valid_translation(result, text):
             return result
         if use_fallback:
             result = await _gigachat_translate(text, from_lang, to_lang)
-            if result:
+            if result and _is_valid_translation(result, text):
                 return result
+        # Не смогли перевести — возвращаем оригинал
+        logger.warning(f"Перевод не удался {from_lang}->{to_lang}, возврат оригинала")
         return text
 
     # Длинный текст — переводим по частям
@@ -278,11 +296,37 @@ async def translate(text: str, from_lang: str, to_lang: str,
     translated_chunks = []
     for chunk in chunks:
         result = await _mymemory_translate(chunk, from_lang, to_lang)
-        if not result and use_fallback:
+        if (not result or not _is_valid_translation(result, chunk)) and use_fallback:
             result = await _gigachat_translate(chunk, from_lang, to_lang)
-        translated_chunks.append(result or chunk)
+        if result and _is_valid_translation(result, chunk):
+            translated_chunks.append(result)
+        else:
+            translated_chunks.append(chunk)  # fallback на оригинал
 
     return " ".join(translated_chunks)
+
+
+# Маркеры ошибок переводчика
+_TRANSLATION_ERROR_MARKERS = (
+    "INVALID SOURCE LANGUAGE",
+    "INVALID TARGET LANGUAGE",
+    "IS AN INVALID",
+    "PLEASE SELECT TWO DISTINCT",
+    "COULD NOT TRANSLATE",
+    "TRANSLATION SERVICE ERROR",
+)
+
+
+def _is_valid_translation(translated: str, original: str) -> bool:
+    """Проверяет, что перевод валиден — не сообщение об ошибке."""
+    if not translated or not translated.strip():
+        return False
+    upper = translated.upper()
+    if any(marker in upper for marker in _TRANSLATION_ERROR_MARKERS):
+        return False
+    # Если перевод идентичен оригиналу — скорее всего перевод не сработал
+    # (но для коротких слов это может быть нормально, поэтому не блокируем)
+    return True
 
 
 def get_language_label(lang_code: str) -> str:
