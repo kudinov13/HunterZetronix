@@ -60,8 +60,33 @@ async def main():
 
     async def notification_router(**kwargs):
         """Маршрутизатор уведомлений: обычные лиды -> notify_lead,
-        холодные лиды -> notify_cold_lead."""
+        холодные лиды -> notify_cold_lead. Переводит иностранные лиды на русский."""
         category = kwargs.get("category", "")
+
+        # Перевод сообщения лида, если оно на иностранном языке
+        message_text = kwargs.get("message_text", "")
+        if message_text and len(message_text) > 10:
+            try:
+                from translator import detect_language, translate, get_language_label, get_language_flag
+                detected_lang = detect_language(message_text)
+                if detected_lang != "ru":
+                    # Переводим на русский
+                    translated = await translate(message_text, detected_lang, "ru")
+                    if translated and translated != message_text:
+                        flag = get_language_flag(detected_lang)
+                        lang_label = get_language_label(detected_lang)
+                        # Сохраняем оригинал и добавляем перевод
+                        kwargs["original_message_text"] = message_text
+                        kwargs["message_text"] = (
+                            f"{flag} {lang_label}\n\n"
+                            f"📝 Оригинал:\n{message_text[:800]}\n\n"
+                            f"🔄 Перевод на русский:\n{translated[:800]}"
+                        )
+                        kwargs["detected_language"] = detected_lang
+                        logger.info(f"Лид переведён {detected_lang}->ru: {len(message_text)} символов")
+            except Exception as e:
+                logger.error(f"Ошибка перевода лида: {e}")
+
         if category in ("HOT_COLD", "WARM_COLD"):
             await notif_bot.notify_cold_lead(**kwargs)
         else:

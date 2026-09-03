@@ -48,6 +48,9 @@ NO_RULES_MARKER = "NO_RULES"
 BROADCAST_LANGUAGES = {
     "ru": "Русский",
     "en": "English",
+    "ar": "العربية",
+    "pt": "Português",
+    "id": "Indonesia",
     "kz": "Қазақша",
     "uz": "O'zbekcha",
     "az": "Azərbaycan",

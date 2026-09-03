@@ -249,14 +249,39 @@ class MessageScheduler:
             )
             return
 
+        # Перевод рассылки на язык чата (если не русский)
+        message_text = result["message"]
+        if language and language != "ru":
+            try:
+                from translator import translate, get_language_label
+                original_text = message_text
+                message_text = await translate(message_text, "ru", language)
+                logger.info(f"Рассылка переведена ru->{language}: {len(original_text)}->{len(message_text)} символов")
+                result["message"] = message_text
+                result["original_message"] = original_text
+                result["translated"] = True
+            except Exception as e:
+                logger.error(f"Ошибка перевода рассылки ({language}): {e}")
+                # Отправляем как есть — GigaChat мог написать на нужном языке
+
         success = await self.user_client.send_scheduled_message(chat_id, result["message"])
         if success:
             niche = result.get("chat_niche", "")
             entry = result.get("entry_point", "")
             niche_info = f"📊 Ниша: {niche}\n💡 Точка входа: {entry}\n\n" if niche else ""
-            await self._notify_owner(
-                f"✅ Рассылка отправлена в «{chat_name}»:\n\n{niche_info}{result['message']}"
-            )
+            # Если был перевод — показываем оригинал и перевод
+            if result.get("translated"):
+                lang_label = get_language_label(language) if language else ""
+                await self._notify_owner(
+                    f"✅ Рассылка отправлена в «{chat_name}» [{lang_label}]:\n\n"
+                    f"{niche_info}"
+                    f"📝 Оригинал (ru):\n{result['original_message']}\n\n"
+                    f"🌐 Перевод ({lang_label}):\n{result['message']}"
+                )
+            else:
+                await self._notify_owner(
+                    f"✅ Рассылка отправлена в «{chat_name}»:\n\n{niche_info}{result['message']}"
+                )
         else:
             await self._notify_owner(
                 f"❌ Рассылка в «{chat_name}» не отправлена: анти-бан лимиты или ошибка отправки."

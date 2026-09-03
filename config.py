@@ -627,6 +627,9 @@ NO_RULES_MARKER = "NO_RULES"
 BROADCAST_LANGUAGE_INSTRUCTIONS = {
     "ru": "Пиши ТОЛЬКО на русском, кириллицей. Запрещены иероглифы, латиница и нерусские символы.",
     "en": "Write ONLY in English. No Cyrillic, no other scripts.",
+    "ar": "اكتب بالعربية فقط. لا تستخدم الحروف اللاتينية أو Cyrillic.",
+    "pt": "Escreva APENAS em português (Brasil). Não use cirílico ou outros scripts.",
+    "id": "Tulis HANYA dalam bahasa Indonesia. Jangan gunakan Cyrillic atau script lain.",
     "kz": "Пиши ТОЛЬКО на казахском языке (кириллица). Запрещены иероглифы и посторонние символы.",
     "uz": "Write ONLY in Uzbek (Latin script). No Cyrillic, no other scripts.",
     "az": "Write ONLY in Azerbaijani (Latin script). No Cyrillic, no other scripts.",
@@ -635,6 +638,9 @@ BROADCAST_LANGUAGE_INSTRUCTIONS = {
 BROADCAST_LANGUAGES = {
     "ru": "Русский",
     "en": "English",
+    "ar": "العربية",
+    "pt": "Português",
+    "id": "Indonesia",
     "kz": "Қазақша",
     "uz": "O'zbekcha",
     "az": "Azərbaycan",
