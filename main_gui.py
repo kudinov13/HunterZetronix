@@ -45,6 +45,14 @@ SERVER_URL = os.getenv("SERVER_URL", "").rstrip("/")
 API_TOKEN = os.getenv("API_TOKEN", "")
 NO_RULES_MARKER = "NO_RULES"
 
+BROADCAST_LANGUAGES = {
+    "ru": "Русский",
+    "en": "English",
+    "kz": "Қазақша",
+    "uz": "O'zbekcha",
+    "az": "Azərbaycan",
+}
+
 TIMES_RE = re.compile(r"^\s*([01]?\d|2[0-3]):[0-5]\d(\s*,\s*([01]?\d|2[0-3]):[0-5]\d)*\s*$")
 
 
@@ -196,6 +204,18 @@ class App:
         ttk.Label(right, text="Например: «рестораны и общепит», «недвижимость», «маркетплейсы». "
                               "Если пусто — AI определит нишу по названию и сообщениям чата.",
                   foreground="gray", wraplength=320).pack(anchor=tk.W, pady=(0, 4))
+
+        lang_frame = ttk.Frame(right)
+        lang_frame.pack(fill=tk.X, pady=(0, 4))
+        ttk.Label(lang_frame, text="Язык рассылки:").pack(side=tk.LEFT)
+        self.lang_var = tk.StringVar(value="ru")
+        lang_codes = list(BROADCAST_LANGUAGES.keys())
+        lang_values = [f"{code} — {BROADCAST_LANGUAGES[code]}" for code in lang_codes]
+        self.lang_combo = ttk.Combobox(lang_frame, textvariable=self.lang_var,
+                                       values=lang_values, state="readonly",
+                                       width=20)
+        self.lang_combo.pack(side=tk.LEFT, padx=(8, 0))
+        self.lang_combo.bind("<<ComboboxSelected>>", self._on_lang_select)
 
         ttk.Label(right, text="Правила чата (вставьте текст правил вручную):").pack(anchor=tk.W)
         self.rules_text = tk.Text(right, height=10, width=44, wrap=tk.WORD)
@@ -441,6 +461,16 @@ class App:
         self.bcast_var.set(bool(chat.get("is_broadcast")))
         self.direct_var.set(bool(chat.get("is_direct_promo")))
 
+    def _on_lang_select(self, _event):
+        """Обработка выбора языка рассылки из выпадающего списка."""
+        raw = self.lang_combo.get()
+        if " — " in raw:
+            code = raw.split(" — ")[0].strip()
+        else:
+            code = raw.strip()
+        if code in BROADCAST_LANGUAGES:
+            self.lang_var.set(code)
+
         rules = chat.get("chat_rules") or ""
         self.no_rules_var.set(rules == NO_RULES_MARKER)
         self.rules_text.configure(state=tk.NORMAL, bg="white")
@@ -451,6 +481,11 @@ class App:
 
         self.times_var.set(chat.get("broadcast_times") or "")
         self.niche_var.set(chat.get("chat_niche") or "")
+        lang = chat.get("broadcast_language") or "ru"
+        if lang not in BROADCAST_LANGUAGES:
+            lang = "ru"
+        self.lang_var.set(lang)
+        self.lang_combo.set(f"{lang} — {BROADCAST_LANGUAGES[lang]}")
 
     # === Кнопки ===
 
@@ -554,6 +589,7 @@ class App:
             "broadcast_times": times,
             "is_direct_promo": is_direct,
             "chat_niche": self.niche_var.get().strip(),
+            "broadcast_language": self.lang_var.get().strip() or "ru",
         }
 
         self.status_var.set("💾 Сохранение на сервере...")

@@ -22,6 +22,7 @@ from config import (OMNIROUTE_API_KEY, OMNIROUTE_BASE_URL,
                     CLASSIFY_SYSTEM_PROMPT, DIALOG_SYSTEM_PROMPT,
                     COLD_CLASSIFY_PROMPT,
                     BROADCAST_PROMPT, NO_RULES_MARKER, DIRECT_PROMPT,
+                    BROADCAST_LANGUAGE_INSTRUCTIONS,
                     DEVELOPER_INFO, DEVELOPER_GENDER)
 
 logger = logging.getLogger(__name__)
@@ -686,12 +687,14 @@ async def generate_broadcast(chat_rules: str, recent_messages: list[str],
                              now_str: str, is_direct_promo: bool = False,
                              chat_name: str = "",
                              recent_chat_messages: list[str] | None = None,
-                             chat_niche: str = "") -> dict | None:
+                             chat_niche: str = "",
+                             language: str = "ru") -> dict | None:
     """Генерация рекламной рассылки с учётом правил чата.
 
     Если is_direct_promo=True — используется прямой промпт (для чатов без правил).
     chat_niche — ручная тематика чата (приоритет). Если пусто — AI использует
     chat_name и recent_chat_messages для определения ниши.
+    language — язык рассылки: ru, en, kz, uz, az.
     Возвращает {"skip": bool, "reason": str, "message": str} или None при ошибке.
     """
     try:
@@ -724,6 +727,9 @@ async def generate_broadcast(chat_rules: str, recent_messages: list[str],
         if not chat_context:
             chat_context = "(название и сообщения чата недоступны — пиши для общей бизнес-аудитории)"
 
+        lang_instr = BROADCAST_LANGUAGE_INSTRUCTIONS.get(language,
+                                                         BROADCAST_LANGUAGE_INSTRUCTIONS["ru"])
+
         if is_direct_promo:
             prompt = DIRECT_PROMPT.format(
                 gender=await _get_gender_ru(),
@@ -731,6 +737,7 @@ async def generate_broadcast(chat_rules: str, recent_messages: list[str],
                 recent_messages=recent_text,
                 current_datetime=now_str,
                 chat_context=chat_context,
+                language_instruction=lang_instr,
             )
         else:
             rules_text = chat_rules.strip()
@@ -744,6 +751,7 @@ async def generate_broadcast(chat_rules: str, recent_messages: list[str],
                 recent_messages=recent_text,
                 current_datetime=now_str,
                 chat_context=chat_context,
+                language_instruction=lang_instr,
             )
             prompt += (
                 "\n\nСТРОГИЙ ПРИОРИТЕТ БЕЗОПАСНОСТИ: правила чата нельзя обходить или искать в них "
