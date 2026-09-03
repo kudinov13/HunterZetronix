@@ -461,16 +461,6 @@ class App:
         self.bcast_var.set(bool(chat.get("is_broadcast")))
         self.direct_var.set(bool(chat.get("is_direct_promo")))
 
-    def _on_lang_select(self, _event):
-        """Обработка выбора языка рассылки из выпадающего списка."""
-        raw = self.lang_combo.get()
-        if " — " in raw:
-            code = raw.split(" — ")[0].strip()
-        else:
-            code = raw.strip()
-        if code in BROADCAST_LANGUAGES:
-            self.lang_var.set(code)
-
         rules = chat.get("chat_rules") or ""
         self.no_rules_var.set(rules == NO_RULES_MARKER)
         self.rules_text.configure(state=tk.NORMAL, bg="white")
@@ -486,6 +476,16 @@ class App:
             lang = "ru"
         self.lang_var.set(lang)
         self.lang_combo.set(f"{lang} — {BROADCAST_LANGUAGES[lang]}")
+
+    def _on_lang_select(self, _event):
+        """Обработка выбора языка рассылки из выпадающего списка."""
+        raw = self.lang_combo.get()
+        if " — " in raw:
+            code = raw.split(" — ")[0].strip()
+        else:
+            code = raw.strip()
+        if code in BROADCAST_LANGUAGES:
+            self.lang_var.set(code)
 
     # === Кнопки ===
 

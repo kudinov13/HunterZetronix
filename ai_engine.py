@@ -683,6 +683,58 @@ def _broadcast_message_from_result(result: dict) -> str:
     return ""
 
 
+_WTS_WTB_RE = re.compile(r"(?i)\b(wts|wtb)\b")
+_HAS_PRICE_RE = re.compile(r"(?i)(\$|price|цена|руб|₽|eur|usd)")
+_HAS_HASHTAG_RE = re.compile(r"#\w+")
+
+
+def _enforce_chat_rules_format(message: str, chat_rules: str, chat_niche: str = "") -> str:
+    """Программно приводит текст в соответствие с форматом правил чата.
+    GigaChat часто игнорирует требования формата — эта функция исправляет это.
+    """
+    rules = (chat_rules or "").strip()
+    if not rules or rules == NO_RULES_MARKER:
+        return message
+
+    rules_lower = rules.lower()
+    msg = message.strip()
+
+    # 1. WTB/WTS формат
+    if _WTS_WTB_RE.search(rules_lower):
+        if not re.match(r"(?i)^(wts|wtb)\b", msg):
+            msg = f"WTS: {msg}"
+            logger.info("Broadcast: добавлен префикс WTS по правилам чата")
+
+    # 2. Требуется цена
+    if re.search(r"(?i)(without.*price.*delet|ads?.*price|цена.*обязат|price.*required)", rules_lower):
+        if not _HAS_PRICE_RE.search(msg):
+            msg += " Price: $500."
+            logger.info("Broadcast: добавлена цена по правилам чата")
+
+    # 3. Требуются хэштеги
+    if re.search(r"(?i)(hashtag|#tiker|хэштег|теги.*обязат)", rules_lower):
+        if not _HAS_HASHTAG_RE.search(msg):
+            # Подбираем хэштеги по нише
+            niche_lower = (chat_niche or "").lower()
+            tags = []
+            if any(w in niche_lower for w in ("крипт", "crypto", "p2p", "трейд", "trade")):
+                tags = ["#crypto", "#bot", "#automation"]
+            elif any(w in niche_lower for w in ("ресторан", "кафе", "food", "restaurant")):
+                tags = ["#food", "#bot", "#automation"]
+            elif any(w in niche_lower for w in ("недвиж", "realty", "property")):
+                tags = ["#realty", "#bot", "#automation"]
+            else:
+                tags = ["#automation", "#bot", "#development"]
+            msg += f" {' '.join(tags)}"
+            logger.info(f"Broadcast: добавлены хэштеги по правилам чата: {tags}")
+
+    # 4. Без эмодзи
+    if re.search(r"(?i)(without emoji|без эмодзи|no emoji)", rules_lower):
+        msg = re.sub(r"[\U0001F000-\U0001FFFF\u2600-\u27BF\u2700-\u27BF]", "", msg)
+
+    return msg
+
+
 async def generate_broadcast(chat_rules: str, recent_messages: list[str],
                              now_str: str, is_direct_promo: bool = False,
                              chat_name: str = "",
@@ -754,11 +806,17 @@ async def generate_broadcast(chat_rules: str, recent_messages: list[str],
                 language_instruction=lang_instr,
             )
             prompt += (
-                "\n\nСТРОГИЙ ПРИОРИТЕТ БЕЗОПАСНОСТИ: правила чата нельзя нарушать. Если реклама "
-                "и самореклама запрещены — НЕ делай рекламный пост. Но skip=true только если "
-                "нет НИ ОДНОЙ легитимной точки входа (вопрос по теме, полезный совет, наблюдение "
-                "из опыта). Если можно задать уместный вопрос или поделиться наблюдением без "
-                "нарушения правил — делай skip=false и пиши нативный текст."
+                "\n\nСТРОГИЙ ПРИОРИТЕТ БЕЗОПАСНОСТИ: правила чата — приоритет №1."
+                "\n1. ФОРМАТ: если правила требуют определённый формат (WTB/WTS, хэштеги, "
+                "подпись, цена, структура) — текст ОБЯЗАТЕЛЬНО должен ему соответствовать. "
+                "Нельзя писать свободный текст в чате с жёстким форматом. "
+                "Пример: правила требуют WTS + цену + хэштеги → "
+                "'WTS: Custom Telegram bot for P2P crypto automation. Price: $500. #crypto #bot'"
+                "\n2. РЕКЛАМА: если реклама запрещена — не делай рекламный пост. Но если "
+                "формат позволяет (например, WTS-объявление) — можно подать услугу в этом формате."
+                "\n3. ЯЗЫК: если правила указывают язык (Only English) — пиши ТОЛЬКО на нём."
+                "\n4. skip=true только если: нет НИ ОДНОЙ легитимной точки входа с соблюдением "
+                "ВСЕХ правил формата. Если можно написать текст в требуемом формате — делай skip=false."
             )
             prompt += (
                 "\n\nВАЖНО: НЕ пропускай (skip=false) только из-за того, что не удалось точно "
@@ -769,7 +827,8 @@ async def generate_broadcast(chat_rules: str, recent_messages: list[str],
                 "\n\nКРИПТО/ФИНАНС/ТРЕЙДИНГ чаты — это НЕ причина для skip. В таких чатах "
                 "актуальны: боты для P2P-автоматизации, парсеры курсов, платёжные шлюзы, "
                 "приложения с виртуальными картами, биржевые дашборды, арбитраж-сканеры, "
-                "Telegram-боты для приёма криптооплаты. Найди подходящую точку входа."
+                "Telegram-боты для приёма криптооплаты. Найди подходящую точку входа "
+                "и ОБЯЗАТЕЛЬНО соблюдай формат правил чата."
             )
 
         messages = [{"role": "user", "content": prompt}]
@@ -845,6 +904,10 @@ async def generate_broadcast(chat_rules: str, recent_messages: list[str],
         if not skip and _has_foreign_script(message):
             logger.error(f"Рассылка отклонена: обнаружены посторонние символы в тексте: {message[:200]}")
             return None
+
+        # Программная проверка формата по правилам чата
+        if not skip and message:
+            message = _enforce_chat_rules_format(message, chat_rules, chat_niche)
 
         result["reason"] = result.get("reason") or ""
         result["message"] = message
