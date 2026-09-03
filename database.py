@@ -410,6 +410,19 @@ async def get_recent_broadcasts(chat_id: int, limit: int = 20) -> list[str]:
             return [r[0] for r in rows if r[0]]
 
 
+async def get_recent_incoming_messages(chat_id: int, limit: int = 15) -> list[str]:
+    """Последние входящие сообщения из чата — для определения ниши AI-рассылкой."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT message_text FROM messages_log
+               WHERE chat_id = ? AND direction = 'incoming'
+               ORDER BY id DESC LIMIT ?""",
+            (chat_id, limit)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [r[0] for r in rows if r[0]]
+
+
 async def get_scheduled_chats() -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row

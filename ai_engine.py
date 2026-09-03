@@ -683,10 +683,13 @@ def _broadcast_message_from_result(result: dict) -> str:
 
 
 async def generate_broadcast(chat_rules: str, recent_messages: list[str],
-                             now_str: str, is_direct_promo: bool = False) -> dict | None:
+                             now_str: str, is_direct_promo: bool = False,
+                             chat_name: str = "",
+                             recent_chat_messages: list[str] | None = None) -> dict | None:
     """Генерация рекламной рассылки с учётом правил чата.
 
     Если is_direct_promo=True — используется прямой промпт (для чатов без правил).
+    chat_name и recent_chat_messages помогают AI определить нишу чата.
     Возвращает {"skip": bool, "reason": str, "message": str} или None при ошибке.
     """
     try:
@@ -704,12 +707,25 @@ async def generate_broadcast(chat_rules: str, recent_messages: list[str],
                 "entry_point": "",
             }
 
+        # Контекст чата: название + последние сообщения из чата
+        chat_context = ""
+        if chat_name:
+            chat_context += f"Название чата: «{chat_name}».\n"
+        if recent_chat_messages:
+            sample = recent_chat_messages[:15]
+            chat_context += "Последние сообщения участников чата (для понимания ниши):\n"
+            chat_context += "\n---\n".join(sample)
+            chat_context += "\n"
+        if not chat_context:
+            chat_context = "(название и сообщения чата недоступны — пиши для общей бизнес-аудитории)"
+
         if is_direct_promo:
             prompt = DIRECT_PROMPT.format(
                 gender=await _get_gender_ru(),
                 developer_info=DEVELOPER_INFO,
                 recent_messages=recent_text,
                 current_datetime=now_str,
+                chat_context=chat_context,
             )
         else:
             rules_text = chat_rules.strip()
@@ -722,12 +738,18 @@ async def generate_broadcast(chat_rules: str, recent_messages: list[str],
                 chat_rules=rules_text,
                 recent_messages=recent_text,
                 current_datetime=now_str,
+                chat_context=chat_context,
             )
             prompt += (
                 "\n\nСТРОГИЙ ПРИОРИТЕТ БЕЗОПАСНОСТИ: правила чата нельзя обходить или искать в них "
                 "лазейки. Если реклама, самореклама, услуги или коммерческие публикации запрещены "
                 "либо разрешение неоднозначно — верни skip=true. Не маскируй рекламу под совет, "
                 "историю или вопрос."
+            )
+            prompt += (
+                "\n\nВАЖНО: НЕ пропускай (skip=false) только из-за того, что не удалось точно "
+                "определить нишу. Используй название чата и последние сообщения для вывода. "
+                "Если ниша неясна — пиши для общей бизнес-аудитории (предприниматели, малый бизнес)."
             )
 
         messages = [{"role": "user", "content": prompt}]
