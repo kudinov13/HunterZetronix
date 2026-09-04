@@ -66,6 +66,10 @@ class UserClient:
         self._me_id: int | None = None
         self._ai_semaphore = asyncio.Semaphore(5)
         self._dialog_locks: dict[int, asyncio.Lock] = {}
+        # Дебаунс сообщений: ждём пока клиент допишет серию сообщений
+        self._dialog_timers: dict[int, asyncio.TimerHandle] = {}
+        self._pending_messages: dict[int, list[str]] = {}
+        self._dialog_debounce_seconds = 4.0  # ждать 4 секунды после последнего сообщения
 
     @property
     def is_paused(self) -> bool:
@@ -267,29 +271,77 @@ class UserClient:
             )
 
     async def _process_private_message(self, event):
-        """Обработка входящего ЛС — ответ клиента в активном диалоге."""
+        """Обработка входящего ЛС — с дебаунсом для серии сообщений.
+
+        Клиент может написать несколько сообщений подряд (как живой человек).
+        Ждём self._dialog_debounce_seconds после последнего сообщения,
+        затем объединяем все накопленные сообщения в один текст и отвечаем один раз.
+        """
         sender_id = event.sender_id
+        text = event.message.text or ""
+        if not text.strip():
+            return
+
+        # Логируем сразу, но обработку откладываем
+        dialog = await db.get_dialog_by_sender(sender_id)
+        if not dialog:
+            logger.debug(f"ЛС от {sender_id} без активного диалога: {text[:50]}...")
+            return
+
+        await db.log_message(0, sender_id, dialog["sender_name"], text,
+                             event.message.id, "incoming")
+
+        # Если диалог завершён — сразу владельцу, без дебаунса
+        if dialog["stage"] in ("ENDED", "CLOSED", "HANDOFF") or dialog.get("do_not_contact"):
+            logger.info(f"ЛС для завершённого диалога #{dialog['id']} оставлено владельцу")
+            if dialog["stage"] == "HANDOFF" and self.notification_callback:
+                await self.notification_callback(
+                    lead_id=dialog["lead_id"], chat_name="ЛС",
+                    sender_name=dialog["sender_name"], sender_username=dialog.get("sender_username"),
+                    message_text=text, category="HUMAN_REQUIRED",
+                    sender_id=dialog["sender_id"], dialog_id=dialog["id"],
+                    reason="Клиент написал после передачи диалога",
+                )
+            return
+
+        # Накапливаем сообщения и перезапускаем таймер
+        self._pending_messages.setdefault(sender_id, []).append(text)
+
+        # Отменяем предыдущий таймер если есть
+        old_timer = self._dialog_timers.get(sender_id)
+        if old_timer:
+            old_timer.cancel()
+
+        # Запускаем новый таймер — через N секунд вызовем _flush_pending_messages
+        loop = asyncio.get_event_loop()
+        timer = loop.call_later(
+            self._dialog_debounce_seconds,
+            lambda: asyncio.ensure_future(self._flush_pending_messages(sender_id))
+        )
+        self._dialog_timers[sender_id] = timer
+        logger.debug(f"Дебаунс: накоплено {len(self._pending_messages[sender_id])} сообщений от {sender_id}, ждём {self._dialog_debounce_seconds}с")
+
+    async def _flush_pending_messages(self, sender_id: int):
+        """Объединяет накопленные сообщения и обрабатывает их как одно."""
+        # Убираем таймер
+        self._dialog_timers.pop(sender_id, None)
+
+        # Достаём накопленные сообщения
+        pending = self._pending_messages.pop(sender_id, [])
+        if not pending:
+            return
+
+        # Объединяем в один текст (как живой человек — несколько фраз подряд)
+        combined_text = "\n".join(pending)
+
         lock = self._dialog_locks.setdefault(sender_id, asyncio.Lock())
         async with lock:
-            text = event.message.text or ""
             dialog = await db.get_dialog_by_sender(sender_id)
             if not dialog:
-                logger.debug(f"ЛС от {sender_id} без активного диалога: {text[:50]}...")
                 return
             if dialog["stage"] in ("ENDED", "CLOSED", "HANDOFF") or dialog.get("do_not_contact"):
-                logger.info(f"ЛС для завершённого диалога #{dialog['id']} оставлено владельцу")
-                if dialog["stage"] == "HANDOFF" and self.notification_callback:
-                    await self.notification_callback(
-                        lead_id=dialog["lead_id"], chat_name="ЛС",
-                        sender_name=dialog["sender_name"], sender_username=dialog.get("sender_username"),
-                        message_text=text, category="HUMAN_REQUIRED",
-                        sender_id=dialog["sender_id"], dialog_id=dialog["id"],
-                        reason="Клиент написал после передачи диалога",
-                    )
                 return
 
-            await db.log_message(0, sender_id, dialog["sender_name"], text,
-                                 event.message.id, "incoming")
             ab_variant = dialog.get("ab_variant", 0)
             if ab_variant is not None and ab_variant >= 0 and dialog["stage"] in ("INITIATING", "QUALIFYING"):
                 messages = json.loads(dialog.get("ai_messages_json") or "[]")
@@ -298,7 +350,8 @@ class UserClient:
                     await db.ab_record_reply(ab_variant)
                     logger.info(f"A/B: клиент ответил на вариант #{ab_variant} (диалог #{dialog['id']})")
 
-            await self._continue_dialog(dialog, text)
+            logger.info(f"Обработка серии из {len(pending)} сообщений от {sender_id}: {combined_text[:80]}...")
+            await self._continue_dialog(dialog, combined_text)
 
     async def _handle_task_received_reply(self, dialog: dict, event, text: str):
         """Обработка ответа клиента на стадии TASK_RECEIVED (уточнение задачи)."""
