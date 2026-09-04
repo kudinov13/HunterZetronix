@@ -141,12 +141,76 @@ class UserClient:
                     return
                 asyncio.create_task(self._process_private_message(event))
 
+        @self.client.on(events.NewMessage(outgoing=True))
+        async def on_outgoing_message(event):
+            """Перехват исходящих ЛС — если владелец пишет сам, бот останавливает диалог."""
+            if self._paused:
+                return
+            if not event.is_private:
+                return
+            # Это сообщение от нас (владельца) — проверяем, есть ли активный диалог
+            asyncio.create_task(self._handle_owner_intervention(event))
+
     async def _process_chat_message_safe(self, event):
         """Обёртка над _process_chat_message с обработкой ошибок и семафором."""
         try:
             await self._process_chat_message(event)
         except Exception as e:
             logger.error(f"Ошибка обработки сообщения из чата {event.chat_id}: {e}", exc_info=True)
+
+    async def _handle_owner_intervention(self, event):
+        """Владелец сам написал в ЛС клиенту — останавливаем диалог, передаём владельцу.
+
+        Если владелец пишет сообщение в ЛС клиенту, с которым бот ведёт диалог,
+        бот немедленно прекращает общение с этим клиентом и переводит диалог
+        в стадию HANDOFF — чтобы бот больше не отвечал автоматически.
+        """
+        try:
+            recipient_id = event.chat_id
+            text = event.message.text or ""
+
+            # Ищем активный диалог с этим получателем
+            dialog = await db.get_dialog_by_sender(recipient_id)
+            if not dialog:
+                return  # нет диалога — не наше дело
+
+            # Если диалог уже завершён — ничего не делаем
+            if dialog["stage"] in ("ENDED", "CLOSED", "HANDOFF"):
+                return
+
+            # Логируем сообщение владельца
+            await db.log_message(0, recipient_id, dialog["sender_name"],
+                                 f"[ВЛАДЕЛЕЦ] {text}", event.message.id, "outgoing")
+
+            # Переводим диалог в HANDOFF — бот больше не будет отвечать
+            await db.update_dialog_stage(dialog["id"], "HANDOFF")
+            await db.update_dialog_sales_data(dialog["id"], handoff_notified=1)
+
+            logger.info(
+                f"ВЛАДЕЛЕЦ вмешался в диалог #{dialog['id']} с {dialog['sender_name']} "
+                f"— диалог переведён в HANDOFF, бот больше не отвечает"
+            )
+
+            # Уведомляем владельца через бот-нотификатор
+            if self.notification_callback:
+                await self.notification_callback(
+                    lead_id=dialog["lead_id"], chat_name="ЛС",
+                    sender_name=dialog["sender_name"],
+                    sender_username=dialog.get("sender_username"),
+                    message_text=f"[Ваше сообщение клиенту]: {text}",
+                    category="HUMAN_REQUIRED",
+                    sender_id=dialog["sender_id"], dialog_id=dialog["id"],
+                    reason="Вы сами написали клиенту — бот остановлен для этого диалога",
+                )
+
+            # Отменяем pending debounce если есть
+            old_timer = self._dialog_timers.pop(recipient_id, None)
+            if old_timer:
+                old_timer.cancel()
+            self._pending_messages.pop(recipient_id, None)
+
+        except Exception as e:
+            logger.error(f"Ошибка обработки вмешательства владельца: {e}", exc_info=True)
 
     async def _process_chat_message(self, event):
         """Обработка сообщения из отслеживаемого чата."""
