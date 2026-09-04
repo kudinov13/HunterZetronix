@@ -536,6 +536,11 @@ class App:
         tk.Label(right_header, text="  НАСТРОЙКИ",
                  font=F_HEADER, bg=C_BLACK, fg="#FFFFFF",
                  anchor=tk.W).pack(side=tk.LEFT, pady=6)
+        # Кнопки СИНХРОН / ОБНОВИТЬ — в заголовке, всегда видны
+        self.sync_btn = BButton(right_header, "СИНХРОН", command=self.sync_dialogs, style="ghost")
+        self.sync_btn.pack(side=tk.RIGHT, padx=(0, 4), pady=4)
+        self.reload_btn = BButton(right_header, "ОБНОВИТЬ", command=self.reload_chat_list, style="ghost")
+        self.reload_btn.pack(side=tk.RIGHT, padx=(0, 4), pady=4)
 
         # Скроллируемый контейнер
         scroll_area = ScrollableFrame(right_outer, bg=C_BG)
@@ -642,13 +647,7 @@ class App:
         self.test_btn = BButton(btns1, "ТЕСТ", command=self.test_broadcast, style="accent")
         self.test_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 0))
 
-        # SYNC / RELOAD
-        btns2 = tk.Frame(right, bg=C_BG)
-        btns2.pack(fill=tk.X, padx=16, pady=(0, 4))
-        self.sync_btn = BButton(btns2, "СИНХРОН", command=self.sync_dialogs, style="ghost")
-        self.sync_btn.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.reload_btn = BButton(btns2, "ОБНОВИТЬ", command=self.reload_chat_list, style="ghost")
-        self.reload_btn.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(8, 0))
+        # Кнопки СИНХРОН/ОБНОВИТЬ перенесены в заголовок панели (всегда видны)
 
         # Парсинг
         tk.Frame(right, bg=C_BLACK, height=1).pack(fill=tk.X, padx=16, pady=12)

@@ -24,6 +24,7 @@ from config import (OMNIROUTE_API_KEY, OMNIROUTE_BASE_URL,
                     BROADCAST_PROMPT, NO_RULES_MARKER, DIRECT_PROMPT,
                     BROADCAST_LANGUAGE_INSTRUCTIONS,
                     DEVELOPER_INFO, DEVELOPER_GENDER)
+from price_catalog import catalog_for_broadcast_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -783,10 +784,13 @@ async def generate_broadcast(chat_rules: str, recent_messages: list[str],
         # Это гарантирует что "оригинал" в уведомлении всегда на русском
         lang_instr = BROADCAST_LANGUAGE_INSTRUCTIONS["ru"]
 
+        price_catalog_text = catalog_for_broadcast_prompt()
+
         if is_direct_promo:
             prompt = DIRECT_PROMPT.format(
                 gender=await _get_gender_ru(),
                 developer_info=DEVELOPER_INFO,
+                price_catalog=price_catalog_text,
                 recent_messages=recent_text,
                 current_datetime=now_str,
                 chat_context=chat_context,
@@ -800,6 +804,7 @@ async def generate_broadcast(chat_rules: str, recent_messages: list[str],
             prompt = BROADCAST_PROMPT.format(
                 gender=await _get_gender_ru(),
                 developer_info=DEVELOPER_INFO,
+                price_catalog=price_catalog_text,
                 chat_rules=rules_text,
                 recent_messages=recent_text,
                 current_datetime=now_str,

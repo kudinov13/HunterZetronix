@@ -72,6 +72,35 @@ def catalog_for_prompt() -> str:
     return "\n".join(rows)
 
 
+def catalog_for_broadcast_prompt() -> str:
+    """Прайс-каталог для промпта рассылок.
+
+    Возвращает ТОЛЬКО услуги с фиксированной ценой (не договорные).
+    Цены в рублях И примерный эквивалент в долларах (для международных чатов).
+    Для договорных услуг — не включаем, AI предложит рыночную цену.
+    """
+    # Примерный курс: 100 ₽ ≈ $1
+    RUB_TO_USD = 1 / 100
+
+    rows = []
+    for item in SERVICES.values():
+        if item.is_negotiable:
+            # Договорные услуги — пропускаем, AI предложит рыночную цену
+            continue
+        if item.minimum == item.maximum:
+            rub = item.minimum
+            usd = int(rub * RUB_TO_USD)
+            price = f"{rub} ₽ (~${usd})"
+        else:
+            rub_min, rub_max = item.minimum, item.maximum
+            usd_min = int(rub_min * RUB_TO_USD)
+            usd_max = int(rub_max * RUB_TO_USD)
+            price = f"{rub_min}–{rub_max} ₽ (~${usd_min}–${usd_max})"
+        unit = "" if item.unit == "project" else f" за {item.unit}"
+        rows.append(f"- {item.name}: от {price}{unit}")
+    return "\n".join(rows)
+
+
 def calculate_quote(requested: list[dict]) -> dict:
     minimum = 0
     maximum = 0
