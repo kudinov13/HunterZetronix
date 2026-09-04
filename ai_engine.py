@@ -779,8 +779,9 @@ async def generate_broadcast(chat_rules: str, recent_messages: list[str],
         if not chat_context:
             chat_context = "(название и сообщения чата недоступны — пиши для общей бизнес-аудитории)"
 
-        lang_instr = BROADCAST_LANGUAGE_INSTRUCTIONS.get(language,
-                                                         BROADCAST_LANGUAGE_INSTRUCTIONS["ru"])
+        # GigaChat всегда пишет на русском — переводчик переведёт на нужный язык
+        # Это гарантирует что "оригинал" в уведомлении всегда на русском
+        lang_instr = BROADCAST_LANGUAGE_INSTRUCTIONS["ru"]
 
         if is_direct_promo:
             prompt = DIRECT_PROMPT.format(
