@@ -500,6 +500,9 @@ class App:
         self.search_entry = BEntry(search_frame, textvariable=self.search_var)
         self.search_entry.pack(fill=tk.X, ipady=4)
         self.search_entry.bind("<KeyRelease>", self._filter_chats)
+        # Контекстное меню для поиска (копировать/вставить/вырезать)
+        self.search_entry.bind("<Button-3>", self._show_search_context_menu)
+        self.search_entry.bind("<Button-2>", self._show_search_context_menu)
 
         # Список чатов
         tree_frame = tk.Frame(left, bg=C_BG)
@@ -694,6 +697,50 @@ class App:
     def _show_context_menu(self, event):
         self.context_menu.post(event.x_root, event.y_root)
 
+    def _show_search_context_menu(self, event):
+        """Контекстное меню для поля поиска."""
+        menu = tk.Menu(self.root, tearoff=0, bg=C_BG, fg=C_BLACK,
+                       activebackground=C_BLACK, activeforeground=C_ACCENT,
+                       borderwidth=2)
+        menu.add_command(label="Копировать", command=self._copy_search)
+        menu.add_command(label="Вставить", command=self._paste_search)
+        menu.add_command(label="Вырезать", command=self._cut_search)
+        menu.add_separator()
+        menu.add_command(label="Очистить", command=self._clear_search)
+        menu.post(event.x_root, event.y_root)
+
+    def _copy_search(self):
+        try:
+            selected = self.search_entry.get()
+            if self.search_entry.selection_present():
+                selected = self.search_entry.selection_get()
+            self.root.clipboard_clear()
+            self.root.clipboard_append(selected)
+        except tk.TclError:
+            pass
+
+    def _paste_search(self):
+        try:
+            text = self.root.clipboard_get()
+            self.search_entry.insert(tk.INSERT, text)
+            self._filter_chats()
+        except tk.TclError:
+            pass
+
+    def _cut_search(self):
+        try:
+            selected = self.search_entry.selection_get()
+            self.root.clipboard_clear()
+            self.root.clipboard_append(selected)
+            self.search_entry.delete("sel.first", "sel.last")
+            self._filter_chats()
+        except tk.TclError:
+            pass
+
+    def _clear_search(self):
+        self.search_var.set("")
+        self._filter_chats()
+
     def _copy_text(self):
         try:
             selected = self.rules_text.get("sel.first", "sel.last")
@@ -728,6 +775,10 @@ class App:
             filtered = [c for c in self._all_chats
                         if search_text in (c.get("chat_name") or "").lower()]
         self._fill_tree(filtered)
+        # Возвращаем фокус в поле поиска, чтобы Ctrl+V работал
+        self.search_entry.focus_set()
+        # Ставим курсор в конец текста
+        self.search_entry.icursor(tk.END)
 
     def _fill_tree(self, chats: list[dict]):
         selected = self.current_chat_id
