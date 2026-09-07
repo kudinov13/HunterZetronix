@@ -2,6 +2,9 @@
 import json
 import logging
 import asyncio
+import hashlib
+import re
+import time
 from datetime import datetime
 from telethon import TelegramClient, events, connection
 from telethon.tl.custom import Message
@@ -70,6 +73,10 @@ class UserClient:
         self._dialog_timers: dict[int, asyncio.TimerHandle] = {}
         self._pending_messages: dict[int, list[str]] = {}
         self._dialog_debounce_seconds = 4.0  # ждать 4 секунды после последнего сообщения
+        # Кэш дедупликации спамеров: (sender_id, text_hash) -> first_seen_timestamp
+        # Если тот же отправитель пишет то же сообщение повторно — пропускаем AI
+        self._spam_cache: dict[tuple[int, str], float] = {}
+        self._spam_cache_ttl = 86400  # 24 часа
 
     @property
     def is_paused(self) -> bool:
@@ -223,8 +230,24 @@ class UserClient:
         await db.log_message(event.chat_id, sender.id, sender_name, text,
                              message.id, "incoming")
 
-        # Детекция лида (с семафором для AI-вызовов)
+        # Дедупликация спамеров: если тот же отправитель уже писал это же
+        # сообщение в последние 24ч — пропускаем AI-классификацию (экономим квоту)
         sender_is_bot = getattr(sender, "bot", False)
+        normalized = re.sub(r"\s+", " ", text.strip().lower())[:500]
+        text_hash = hashlib.md5(normalized.encode()).hexdigest()
+        spam_key = (sender.id, text_hash)
+        now = time.time()
+        # Чистим устаревшие записи раз в 100 сообщений
+        if len(self._spam_cache) > 500:
+            self._spam_cache = {k: v for k, v in self._spam_cache.items()
+                                if now - v < self._spam_cache_ttl}
+        if spam_key in self._spam_cache:
+            logger.info(f"Дубликат сообщения от {sender_name} (спам-кэш) — пропускаем AI")
+            await db.update_message_verdict(event.chat_id, message.id, "spam_duplicate")
+            return
+        self._spam_cache[spam_key] = now
+
+        # Детекция лида (с семафором для AI-вызовов)
         async with self._ai_semaphore:
             result = await detect_lead(text, message.date, sender_is_bot)
 

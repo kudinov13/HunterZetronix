@@ -4,6 +4,7 @@
 OmniRoute — агрегатор 50+ бесплатных провайдеров (Claude, GPT, Gemini) с auto-fallback.
 Groq и OpenRouter также имеют бесплатные модели.
 """
+import asyncio
 import json
 import logging
 import re
@@ -340,25 +341,25 @@ async def _chat_with_fallback(
 ) -> str | None:
     """Отправляет запрос к AI с fallback на доступный резервный провайдер."""
     # GigaChat — отдельный путь (OAuth + самоподписанный сертификат)
+    # При 429/503 ретраим с экспоненциальной задержкой, без OmniRoute
     if provider == "gigachat":
-        try:
-            return await _gigachat_chat(model, messages, **kwargs)
-        except Exception as e:
-            error_text = str(e).lower()
-            if not any(code in error_text for code in _RETRYABLE_CODES):
-                raise
-            logger.warning(f"GigaChat ошибка ({e}), пробуем fallback на OmniRoute")
+        _gigachat_delays = [3, 8, 15]  # секунды между ретраями
+        last_err = None
+        for attempt, delay in enumerate([0] + _gigachat_delays):
+            if delay:
+                logger.warning(f"GigaChat ретрай #{attempt} через {delay}с (ошибка: {last_err})")
+                await asyncio.sleep(delay)
             try:
-                fallback_client = _get_client("omniroute")
-                fallback_kwargs = {k: v for k, v in kwargs.items() if k != "response_format"}
-                response = await fallback_client.chat.completions.create(
-                    model="auto/best-chat", messages=messages, **fallback_kwargs
-                )
-                if response.choices:
-                    return response.choices[0].message.content
-            except Exception as fallback_error:
-                logger.error(f"Fallback на OmniRoute тоже не сработал: {fallback_error}")
-            raise
+                return await _gigachat_chat(model, messages, **kwargs)
+            except Exception as e:
+                last_err = e
+                error_text = str(e).lower()
+                if not any(code in error_text for code in _RETRYABLE_CODES):
+                    raise  # не retryable — сразу выбрасываем
+                # retryable (429/503) — пробуем ещё раз
+                continue
+        logger.error(f"GigaChat: все ретраи исчерпаны ({last_err})")
+        raise last_err
 
     client = _get_client(provider)
     try:
