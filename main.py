@@ -102,6 +102,7 @@ async def main():
 
     scheduler = MessageScheduler(user_client=user_client,
                                  broadcast_notify_callback=broadcast_notify)
+    notif_bot.scheduler = scheduler
 
     # Запуск
     logger.info("Запуск рабочего аккаунта (Telethon)...")
@@ -225,9 +226,10 @@ async def main():
     
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', 8080)
+    api_port = int(os.getenv("API_PORT", "8080"))
+    site = web.TCPSite(runner, '0.0.0.0', api_port)
     await site.start()
-    logger.info("HTTP API запущен на порту 8080")
+    logger.info(f"HTTP API запущен на порту {api_port}")
 
     try:
         # Держим основной цикл

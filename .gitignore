@@ -1,5 +1,6 @@
 .env
 .env.local
+trial.env
 *.session
 *.session-journal
 data/
@@ -11,6 +12,7 @@ venv/
 *.db-journal
 logs/
 bot.log
+trial_bot.log
 dist/
 build/
 *.spec
@@ -22,3 +24,4 @@ LeadHunter.exe
 gui.log
 desktop.ini
 _tmp/
+_fix_*.py

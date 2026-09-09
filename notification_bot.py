@@ -33,6 +33,15 @@ class NotificationBot:
         self.user_client = user_client
         self._awaiting_price_input = False
         self._price_dialog_ref: str | None = None
+        # Управление чатами через бота
+        self._awaiting_chat_input = False
+        self._awaiting_monitoring_chat = False
+        self._awaiting_broadcast_chat = False
+        self._awaiting_rules_chat = False
+        self._awaiting_times_chat = False
+        self._awaiting_lang_chat = False
+        self._awaiting_niche_chat = False
+        self.scheduler = None
         self._register_handlers()
 
     def _main_keyboard(self) -> ReplyKeyboardMarkup:
@@ -98,13 +107,30 @@ class NotificationBot:
         """Меню настроек."""
         return ReplyKeyboardMarkup(
             keyboard=[
+                [KeyboardButton(text="📋 Список чатов"), KeyboardButton(text="🆕 Добавить чат")],
+                [KeyboardButton(text="🔔 Мониторинг"), KeyboardButton(text="📢 Рассылка")],
                 [KeyboardButton(text="✅ Завершить прогрев")],
-                [KeyboardButton(text="� Список чатов")],
                 [KeyboardButton(text="⬅️ Назад")],
             ],
             resize_keyboard=True,
         )
 
+    def _chats_manage_keyboard(self) -> ReplyKeyboardMarkup:
+        """Меню управления чатами."""
+        return ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="📋 Список чатов")],
+                [KeyboardButton(text="🆕 Добавить чат")],
+                [KeyboardButton(text="🔔 Мониторинг")],
+                [KeyboardButton(text="📢 Рассылка")],
+                [KeyboardButton(text="📝 Правила чата")],
+                [KeyboardButton(text="⏰ Время рассылки")],
+                [KeyboardButton(text="🌐 Язык рассылки")],
+                [KeyboardButton(text="🏷 Ниша чата")],
+                [KeyboardButton(text="⬅️ Назад")],
+            ],
+            resize_keyboard=True,
+        )
     def _register_handlers(self):
         # === Навигация по меню ===
         @self.dp.message(F.text == "🔥 Лиды")
@@ -380,6 +406,111 @@ class NotificationBot:
                     await message.answer("❌ Не удалось вступить в чат")
             else:
                 await message.answer("❌ Клиент не инициализирован")
+
+        # === Управление чатами через бота ===
+
+        @self.dp.message(F.text == "📋 Список чатов")
+        async def btn_chats_list_settings(message: Message):
+            if message.from_user.id != OWNER_TG_ID:
+                return
+            chats = await db.get_all_chats()
+            if not chats:
+                await message.answer("Нет чатов. Добавьте через /addchat")
+                return
+            text = "📋 Все чаты:\n\n"
+            for c in chats:
+                mon = "✅" if c.get("is_monitored") else "❌"
+                br = "📢" if c.get("is_broadcast") else ""
+                lang = c.get("broadcast_language") or ""
+                niche = c.get("chat_niche") or ""
+                times = c.get("broadcast_times") or ""
+                line = f"{mon}{br} {c['chat_name']} — ID: {c['chat_id']}"
+                if lang:
+                    line += f" [{lang}]"
+                if niche:
+                    line += f" ({niche})"
+                if times:
+                    line += f" ⏰{times}"
+                text += line + "\n"
+            if len(text) > 4000:
+                text = text[:4000] + "\n... (обрезано)"
+            await message.answer(text)
+
+        @self.dp.message(F.text == "➕ Добавить чат")
+        async def btn_add_chat(message: Message):
+            if message.from_user.id != OWNER_TG_ID:
+                return
+            self._awaiting_chat_input = True
+            await message.answer(
+                "Отправьте ссылку или @username чата:\n"
+                "Пример: @itfreelance_ru\n"
+                "Пример: https://t.me/itfreelance_ru"
+            )
+
+        @self.dp.message(F.text == "🔔 Мониторинг")
+        async def btn_toggle_monitoring(message: Message):
+            if message.from_user.id != OWNER_TG_ID:
+                return
+            self._awaiting_monitoring_chat = True
+            await message.answer(
+                "Отправьте ID чата для переключения мониторинга:\n"
+                "Список ID: /chats"
+            )
+
+        @self.dp.message(F.text == "📢 Рассылка")
+        async def btn_toggle_broadcast(message: Message):
+            if message.from_user.id != OWNER_TG_ID:
+                return
+            self._awaiting_broadcast_chat = True
+            await message.answer(
+                "Отправьте ID чата для переключения рассылки:\n"
+                "Список ID: /chats"
+            )
+
+        @self.dp.message(F.text == "📝 Правила чата")
+        async def btn_chat_rules(message: Message):
+            if message.from_user.id != OWNER_TG_ID:
+                return
+            self._awaiting_rules_chat = True
+            await message.answer(
+                "Отправьте ID чата и правила через |:\n"
+                "Пример: -100123456|WTS, хэштеги обязательны, ценник в конце"
+            )
+
+        @self.dp.message(F.text == "⏰ Время рассылки")
+        async def btn_broadcast_times(message: Message):
+            if message.from_user.id != OWNER_TG_ID:
+                return
+            self._awaiting_times_chat = True
+            await message.answer(
+                "Отправьте ID чата и время (cron) через |:\n"
+                "Пример: -100123456|0 10,14,18 * * *\n"
+                "Это значит: каждый день в 10:00, 14:00, 18:00\n"
+                "Формат: минута час день месяц день_недели"
+            )
+
+        @self.dp.message(F.text == "🌐 Язык рассылки")
+        async def btn_broadcast_lang(message: Message):
+            if message.from_user.id != OWNER_TG_ID:
+                return
+            self._awaiting_lang_chat = True
+            await message.answer(
+                "Отправьте ID чата и язык через |:\n"
+                "Пример: -100123456|ru\n"
+                "Доступные: ru, en, ar, pt, id, kk, uz, az"
+            )
+
+        @self.dp.message(F.text == "🏷 Ниша чата")
+        async def btn_chat_niche(message: Message):
+            if message.from_user.id != OWNER_TG_ID:
+                return
+            self._awaiting_niche_chat = True
+            await message.answer(
+                "Отправьте ID чата и нишу через |:\n"
+                "Пример: -100123456|IT-фриланс\n"
+                "Пример: -100123456|Маркетинг\n"
+                "Пример: -100123456|Строительство"
+            )
 
         @self.dp.message(Command("warmup_done"))
         async def cmd_warmup_done(message: Message):
@@ -719,29 +850,182 @@ class NotificationBot:
                 await message.answer(f"❌ Ошибка: {e}")
 
         @self.dp.message(F.text)
-        async def price_text_input(message: Message):
-            if message.from_user.id != OWNER_TG_ID or not self._awaiting_price_input:
+        async def text_input_handler(message: Message):
+            if message.from_user.id != OWNER_TG_ID:
                 return
             text = (message.text or "").strip()
-            if self._price_dialog_ref:
-                dialog_ref = self._price_dialog_ref
-                price = text
-            else:
-                parts = text.split(maxsplit=1)
-                if len(parts) < 2:
-                    await message.answer("Нужно указать ID или @ник и цену через пробел.")
+
+            # === Ввод цены ===
+            if self._awaiting_price_input:
+                if self._price_dialog_ref:
+                    dialog_ref = self._price_dialog_ref
+                    price = text
+                else:
+                    parts = text.split(maxsplit=1)
+                    if len(parts) < 2:
+                        await message.answer("Нужно указать ID или @ник и цену через пробел.")
+                        return
+                    dialog_ref, price = parts
+                if not self.user_client:
+                    await message.answer("❌ Клиент не инициализирован")
                     return
-                dialog_ref, price = parts
-            if not self.user_client:
-                await message.answer("❌ Клиент не инициализирован")
+                success = await self.user_client.continue_dialog_with_price(dialog_ref, price)
+                if success:
+                    self._awaiting_price_input = False
+                    self._price_dialog_ref = None
+                    await message.answer(f"✅ Цена {price} отправлена в диалог {dialog_ref}.")
+                else:
+                    await message.answer("❌ Не удалось назначить цену. Проверьте ID или @ник.")
                 return
-            success = await self.user_client.continue_dialog_with_price(dialog_ref, price)
-            if success:
-                self._awaiting_price_input = False
-                self._price_dialog_ref = None
-                await message.answer(f"✅ Цена {price} отправлена в диалог {dialog_ref}.")
-            else:
-                await message.answer("❌ Не удалось назначить цену. Проверьте ID или @ник.")
+
+            # === Добавление чата ===
+            if self._awaiting_chat_input:
+                self._awaiting_chat_input = False
+                chat_link = text
+                await message.answer(f"Попытка вступить в чат: {chat_link}...")
+                if self.user_client:
+                    chat_id = await self.user_client.join_chat(chat_link)
+                    if chat_id:
+                        entity = await self.user_client.client.get_entity(chat_id)
+                        chat_name = getattr(entity, "title", str(chat_id))
+                        await db.add_chat(chat_id, chat_name)
+                        await self.user_client.reload_chats()
+                        await message.answer(f"✅ Вступил в чат: {chat_name} (ID: {chat_id})")
+                    else:
+                        await message.answer("❌ Не удалось вступить в чат")
+                else:
+                    await message.answer("❌ Клиент не инициализирован")
+                return
+
+            # === Переключение мониторинга ===
+            if self._awaiting_monitoring_chat:
+                self._awaiting_monitoring_chat = False
+                try:
+                    chat_id = int(text)
+                except ValueError:
+                    await message.answer("❌ Неверный ID. Отправьте число.")
+                    return
+                chat = await db.get_chat(chat_id)
+                if not chat:
+                    await message.answer(f"❌ Чат {chat_id} не найден")
+                    return
+                new_val = 0 if chat.get("is_monitored") else 1
+                await db.update_chat(chat_id, is_monitored=bool(new_val))
+                if self.user_client:
+                    await self.user_client.reload_chats()
+                status = "включён" if new_val else "выключен"
+                await message.answer(f"✅ Мониторинг чата {chat.get('chat_name')} {status}")
+                return
+
+            # === Переключение рассылки ===
+            if self._awaiting_broadcast_chat:
+                self._awaiting_broadcast_chat = False
+                try:
+                    chat_id = int(text)
+                except ValueError:
+                    await message.answer("❌ Неверный ID. Отправьте число.")
+                    return
+                chat = await db.get_chat(chat_id)
+                if not chat:
+                    await message.answer(f"❌ Чат {chat_id} не найден")
+                    return
+                new_val = 0 if chat.get("is_broadcast") else 1
+                await db.update_chat(chat_id, is_broadcast=bool(new_val))
+                if hasattr(self, 'scheduler') and self.scheduler:
+                    await self.scheduler.reload_jobs()
+                status = "включена" if new_val else "выключена"
+                await message.answer(f"✅ Рассылка чата {chat.get('chat_name')} {status}")
+                return
+
+            # === Правила чата ===
+            if self._awaiting_rules_chat:
+                self._awaiting_rules_chat = False
+                parts = text.split("|", 1)
+                if len(parts) < 2:
+                    await message.answer("❌ Формат: ID|правила")
+                    return
+                try:
+                    chat_id = int(parts[0].strip())
+                except ValueError:
+                    await message.answer("❌ Неверный ID")
+                    return
+                rules = parts[1].strip()
+                chat = await db.get_chat(chat_id)
+                if not chat:
+                    await message.answer(f"❌ Чат {chat_id} не найден")
+                    return
+                await db.update_chat(chat_id, chat_rules=rules)
+                await message.answer(f"✅ Правила для {chat.get('chat_name')} обновлены:\n{rules}")
+                return
+
+            # === Время рассылки ===
+            if self._awaiting_times_chat:
+                self._awaiting_times_chat = False
+                parts = text.split("|", 1)
+                if len(parts) < 2:
+                    await message.answer("❌ Формат: ID|cron")
+                    return
+                try:
+                    chat_id = int(parts[0].strip())
+                except ValueError:
+                    await message.answer("❌ Неверный ID")
+                    return
+                times = parts[1].strip()
+                chat = await db.get_chat(chat_id)
+                if not chat:
+                    await message.answer(f"❌ Чат {chat_id} не найден")
+                    return
+                await db.update_chat(chat_id, broadcast_times=times, schedule_cron=times)
+                if hasattr(self, 'scheduler') and self.scheduler:
+                    await self.scheduler.reload_jobs()
+                await message.answer(f"✅ Время рассылки для {chat.get('chat_name')}:\n{times}")
+                return
+
+            # === Язык рассылки ===
+            if self._awaiting_lang_chat:
+                self._awaiting_lang_chat = False
+                parts = text.split("|", 1)
+                if len(parts) < 2:
+                    await message.answer("❌ Формат: ID|язык")
+                    return
+                try:
+                    chat_id = int(parts[0].strip())
+                except ValueError:
+                    await message.answer("❌ Неверный ID")
+                    return
+                lang = parts[1].strip().lower()
+                valid = {"ru", "en", "ar", "pt", "id", "kk", "uz", "az"}
+                if lang not in valid:
+                    await message.answer(f"❌ Язык должен быть один из: {', '.join(sorted(valid))}")
+                    return
+                chat = await db.get_chat(chat_id)
+                if not chat:
+                    await message.answer(f"❌ Чат {chat_id} не найден")
+                    return
+                await db.update_chat(chat_id, broadcast_language=lang)
+                await message.answer(f"✅ Язык рассылки для {chat.get('chat_name')}: {lang}")
+                return
+
+            # === Ниша чата ===
+            if self._awaiting_niche_chat:
+                self._awaiting_niche_chat = False
+                parts = text.split("|", 1)
+                if len(parts) < 2:
+                    await message.answer("❌ Формат: ID|ниша")
+                    return
+                try:
+                    chat_id = int(parts[0].strip())
+                except ValueError:
+                    await message.answer("❌ Неверный ID")
+                    return
+                niche = parts[1].strip()
+                chat = await db.get_chat(chat_id)
+                if not chat:
+                    await message.answer(f"❌ Чат {chat_id} не найден")
+                    return
+                await db.update_chat(chat_id, chat_niche=niche)
+                await message.answer(f"✅ Ниша для {chat.get('chat_name')}: {niche}")
+                return
 
     async def _handle_status(self, message: Message):
         hourly = await db.get_hourly_actions_count()
